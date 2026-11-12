@@ -1,0 +1,66 @@
+name: qemu-baseline
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/qemu-baseline.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU, clang and llvm-nm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm clang llvm
+          if ! command -v llvm-nm >/dev/null; then
+            src=$(command -v llvm-nm-18 || command -v llvm-nm-17 || command -v llvm-nm-16)
+            sudo ln -sf "$src" /usr/local/bin/llvm-nm
+          fi
+          qemu-system-aarch64 --version
+          llvm-nm --version | head -n 1
+
+      - name: Fetch the SWEETXNU kernel artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p kernel
+          gh run download 43189374633 -n xnu-kernel -D kernel
+          sha256sum kernel/kernel.development.sweet
+
+      - name: Build the QEMU payload
+        run: |
+          mkdir -p out
+          python3 tools/mkadt.py out/qemu.adt --qemu
+          clang -target arm64-apple-ios16.0 -c tools/sweet-init.S -o out/sweet-init.o
+          python3 tools/mkinit.py out/sweet-init.o out/sweet-init
+          python3 tools/mkpayload.py kernel/kernel.development.sweet out/qemu.adt out/payload.bin \
+            --ramdisk out/sweet-init \
+            --cmdline "debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam -noprogress rd=md0"
+          ls -l out
+
+      - name: Boot in QEMU
+        run: |
+          set +e
+          python3 tools/qemu-sweet.py out/payload.bin out/run --secs 200 \
+            --kernel kernel/kernel.development.sweet --fail-on-panic
+          echo "qemu-sweet-exit=$?"
+          echo "--- serial.txt tail ---"
+          tail -n 80 out/run/serial.txt
+          echo "--- fb.txt tail ---"
+          tail -n 40 out/run/fb.txt
+
+      - name: Upload QEMU artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-baseline
+          path: out/run
