@@ -1,0 +1,120 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH 082/100] sagit: add SAGIT machine config for Xiaomi 6 (MSM8998, ARMv8.0)
+
+SAGIT (Xiaomi 6, MSM8998 / Snapdragon 835) uses Cortex-A73 + Cortex-A53
+(ARMv8.0), which has NO LSE atomics and NO CRC32 instructions. The kernel
+must be compiled with -march=armv8-a+crypto so the compiler does not emit
+LSE/CRC32. Userspace LSE instructions are emulated by the kernel (see
+0084-sagit-lse-emulation.patch).
+
+SAGIT.h defines SWEET as well so all existing SWEET-family patches (GICv3,
+timer PPIs, PSCI, UFS, framebuffer) are reused; only the -march flag and
+the LSE emulation differ. Hardware addresses will be overridden in a later
+phase for real-device bring-up.
+---
+ makedefs/MakeInc.def                      |  9 ++++++++-
+ pexpert/pexpert/arm64/Makefile            |  3 ++-
+ pexpert/pexpert/arm64/SAGIT.h             | 33 +++++++++++++++++++++++++++++++
+ pexpert/pexpert/arm64/board_config.h      | 12 ++++++++++++
+ 4 files changed, 56 insertions(+), 1 deletion(-)
+
+diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
+--- a/makedefs/MakeInc.def
++++ b/makedefs/MakeInc.def
+@@ -8,7 +8,7 @@ SUPPORTED_ARM64_MACHINE_CONFIGS = NONE
+ else ifneq ($(findstring _host,$(RC_ProjectName)),)
+ SUPPORTED_ARM64_MACHINE_CONFIGS = NONE
+ else
+-SUPPORTED_ARM64_MACHINE_CONFIGS = BCM2837 T6000 T8101 T8103 VMAPPLE SWEET
++SUPPORTED_ARM64_MACHINE_CONFIGS = BCM2837 T6000 T8101 T8103 VMAPPLE SWEET SAGIT
+ 
+ endif
+ 
+@@ -61,7 +61,8 @@ MACHINE_FLAGS_ARM64_T8103 = -DARM64_BOARD_CONFIG_T8103                  -mcpu=ap
+ MACHINE_FLAGS_ARM64_T6000 = -DARM64_BOARD_CONFIG_T6000 		-mcpu=apple-a14
+ MACHINE_FLAGS_ARM64_VMAPPLE = -DARM64_BOARD_CONFIG_VMAPPLE              -march=armv8.5a
+ MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837
+ MACHINE_FLAGS_ARM64_SWEET = -DARM64_BOARD_CONFIG_SWEET                -march=armv8.2-a+crypto
++MACHINE_FLAGS_ARM64_SAGIT = -DARM64_BOARD_CONFIG_SAGIT                -march=armv8-a+crypto
+ 
+ 
+ #
+@@ -260,8 +261,12 @@ ifeq ($(ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG),)
+ # Without embdedded device map, use a default arch string
+ export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := $(shell echo $(CURRENT_ARCH_CONFIG) | tr A-Z a-z)
+ ifneq ($(filter arm64,$(ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG)),)
++# sweet and sagit's Cortex-A76/A55 and A73/A53 have no pointer authentication
++ifneq ($(filter SWEET SAGIT,$(CURRENT_MACHINE_CONFIG)),)
++else
+ export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64e
+ endif
++endif
+ 
+ endif
+ 
+diff --git a/pexpert/pexpert/arm64/Makefile b/pexpert/pexpert/arm64/Makefile
+--- a/pexpert/pexpert/arm64/Makefile
++++ b/pexpert/pexpert/arm64/Makefile
+@@ -17,7 +17,8 @@ PRIVATE_KERNELFILES = \
+ 	boot.h \
+ 	H13.h \
+ 	VMAPPLE.h \
+-	BCM2837.h \
++	BCM2837.h \
++	SAGIT.h
+ 
+ 
+ # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
+diff --git a/pexpert/pexpert/arm64/SAGIT.h b/pexpert/pexpert/arm64/SAGIT.h
+new file mode 100644
+--- /dev/null
++++ b/pexpert/pexpert/arm64/SAGIT.h
+@@ -0,0 +1,24 @@
++/*
++ * Board config for the Xiaomi 6 ("sagit", Qualcomm MSM8998 / Snapdragon 835):
++ * Kryo 280 = Cortex-A73 + Cortex-A53, ARMv8.0, no LSE, no CRC32, no PAC.
++ *
++ * Reuses the SWEET-family GICv3/timer/PSCI/UFS code by defining SWEET;
++ * only the compiler -march flag differs (armv8-a instead of armv8.2-a).
++ * Hardware MMIO addresses are inherited from SWEET for QEMU bring-up and
++ * will be overridden for real hardware in a later phase.
++ */
++
++#ifndef _PEXPERT_ARM64_SAGIT_H
++#define _PEXPERT_ARM64_SAGIT_H
++
++#define SAGIT                     1
++
++/*
++ * Pull in all SWEET-family definitions (GICv3, timer PPIs, PSCI, UFS, etc.).
++ * SWEET.h defines SWEET=1, which activates all SWEET-conditional code paths
++ * in the SWEET patch series. SAGIT only differs in the compiler -march flag
++ * (armv8-a, no LSE/CRC32) and the LSE emulation handler.
++ */
++#include <pexpert/arm64/SWEET.h>
++
++#endif /* ! _PEXPERT_ARM64_SAGIT_H */
+diff --git a/pexpert/pexpert/arm64/board_config.h b/pexpert/pexpert/arm64/board_config.h
+--- a/pexpert/pexpert/arm64/board_config.h
++++ b/pexpert/pexpert/arm64/board_config.h
+@@ -106,8 +106,18 @@
+ #define CORE_NCTRS                     8 /* Placeholder; KPC is not enabled for this target */
+ 
+ #endif  /* ARM64_BOARD_CONFIG_SWEET */
+ 
++#ifdef ARM64_BOARD_CONFIG_SAGIT
++#include <pexpert/arm64/SAGIT.h>
++
++#define MAX_L2_CLINE                   6
++#define MAX_CPUS                       8
++#define MAX_CPU_CLUSTERS               1
++
++#define CORE_NCTRS                     8 /* Placeholder; KPC is not enabled for this target */
++
++#endif  /* ARM64_BOARD_CONFIG_SAGIT */
++
+ #ifdef ARM64_BOARD_CONFIG_VMAPPLE
+ #include <pexpert/arm64/VMAPPLE.h>
+ 
+-- 
+2.43.0
