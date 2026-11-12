@@ -1,0 +1,23 @@
+name: probe-runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  arm64:
+    runs-on: macos-15
+    steps:
+      - name: Info
+        run: |
+          uname -m
+          sw_vers
+          xcodebuild -version 2>/dev/null | head -2
+
+  intel:
+    runs-on: macos-15-intel
+    steps:
+      - name: Info
+        run: |
+          uname -m
+          sw_vers
+          xcodebuild -version 2>/dev/null | head -2
