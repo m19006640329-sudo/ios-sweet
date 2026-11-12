@@ -127,5 +127,3 @@ new file mode 100644
 +
 +options   CONFIG_RESLIDE_SHARED_CACHE		# <reslide_shared_cache>
 +options   CONFIG_KERNEL_TBI		# <kernel_tbi>
--- 
-2.43.0
