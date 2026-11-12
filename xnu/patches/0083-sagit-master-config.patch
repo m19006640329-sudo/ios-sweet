@@ -15,9 +15,9 @@ new file mode 100644
 @@ -0,0 +1,114 @@
 +#
 +# sagit (Xiaomi 6, MSM8998): MASTER.arm64.MacOSX plus the open-source
-+# arm64 assembly and pmap (nos_arm_asm, nos_arm_pmap). Identical to
-+# MASTER.arm64.sweet; the -march=armv8-a (no LSE/CRC32) flag is supplied
-+# by MACHINE_FLAGS_ARM64_SAGIT in makedefs/MakeInc.def.
++# arm64 assembly and pmap (nos_arm_asm, nos_arm_pmap), and kperf+kpc with
++# the stub kpc.c, exactly as MASTER.arm64.sweet. -march=armv8-a (no LSE,
++# no CRC32) is supplied by MACHINE_FLAGS_ARM64_SAGIT in MakeInc.def.
 +#
 +#
 +# Mach Operating System
@@ -45,7 +45,7 @@ new file mode 100644
 +#  BSD_RELEASE =    [ BSD_BASE ]
 +#  BSD_DEV =        [ BSD_BASE config_vnguard ]
 +#  BSD_DEBUG =      [ BSD_BASE config_vnguard ]
-+#  FILESYS_BASE =   [ devfs fdesc fifo fs_compression config_protect config_mnt_rootsnap config_rosv_startup config_mount_vm config_mount_prebootrecovery config_basesystemroot config_fse quota namedstreams config_imgsrc_access config_triggers config_ext_resolver config_searchfs config_volfs config_appledouble nullfs config_mnt_suid config_firmlinks config_dataless_files config_union_mounts config_file_leases ]
++#  FILESYS_BASE =   [ devfs fdesc fifo mockfs sweet_hfs fs_compression config_protect config_mnt_rootsnap config_rosv_startup config_mount_vm config_mount_prebootrecovery config_basesystemroot config_fse quota namedstreams config_imgsrc_access config_triggers config_searchfs config_volfs config_appledouble nullfs config_mnt_suid config_firmlinks config_dataless_files config_union_mounts config_file_leases ]
 +#  FILESYS_RELEASE= [ FILESYS_BASE ]
 +#  FILESYS_DEV =    [ FILESYS_BASE config_iocount_trace ]
 +#  FILESYS_DEBUG =  [ FILESYS_BASE config_iocount_trace ]
@@ -74,7 +74,7 @@ new file mode 100644
 +#  LIBKERN_RELEASE =[ LIBKERN_BASE zlib ]
 +#  LIBKERN_DEV =    [ LIBKERN_BASE zlib iotracking ]
 +#  LIBKERN_DEBUG =  [ LIBKERN_BASE zlib iotracking ]
-+#  PERF_DBG_BASE =  [ config_dtrace mach_kdp config_serial_kdp kdp_interactive_debugging config_kdp_coredump_encryption config_pervasive_energy PERFMON_BASE kperf ]
++#  PERF_DBG_BASE =  [ config_dtrace mach_kdp config_serial_kdp kdp_interactive_debugging config_kdp_coredump_encryption config_pervasive_energy PERFMON_BASE kperf kpc ]
 +#  PERF_DBG_RELEASE=[ PERF_DBG_BASE ist_kdebug ]
 +#  PERF_DBG_DEV =   [ PERF_DBG_BASE lock_stats zleaks alternate_debugger sched_hygiene_debug config_debug_syscall_rejection config_iotrace ]
 +#  PERF_DBG_DEBUG = [ PERF_DBG_BASE lock_stats zleaks alternate_debugger sched_hygiene_debug config_debug_syscall_rejection config_iotrace ]

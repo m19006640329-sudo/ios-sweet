@@ -32,7 +32,7 @@ diff --git a/osfmk/arm64/sagit_lse_asm.s b/osfmk/arm64/sagit_lse_asm.s
 new file mode 100644
 --- /dev/null
 +++ b/osfmk/arm64/sagit_lse_asm.s
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,592 @@
 +/*
 + * SAGIT LSE atomic emulation helpers.
 + *
@@ -56,6 +56,21 @@ new file mode 100644
 + */
 +
 +#include "asm.h"
++
++/*
++ * COPYIO_RECOVER_RANGE is a local .macro inside machine_routines_asm.s, not
++ * a header, so duplicate it here. The recorded ranges are resolved against
++ * that file's copyio_recover_table, which stays the single definition.
++ */
++.macro COPYIO_RECOVER_RANGE end_addr, recovery_addr = copyio_error
++	.align	3
++	.pushsection __TEXT, __copyio_vectors, regular
++	.quad	Lcre_start_\@  - _copyio_recover_table
++	.quad	\end_addr      - _copyio_recover_table
++	.quad	\recovery_addr - _copyio_recover_table
++	.popsection
++Lcre_start_\@:
++.endmacro
 +
 +/* BITCLR rd, rn, rm : rd = rn & ~rm */
 +.macro BITCLR rd, rn, rm
