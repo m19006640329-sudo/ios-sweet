@@ -20,7 +20,7 @@ sleh.c maps decoded fields to the right helper.
 diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 --- a/osfmk/conf/files.arm64
 +++ b/osfmk/conf/files.arm64
-@@ -58,6 +58,7 @@
+@@ -58,7 +58,8 @@
  osfmk/arm64/lock_ticket_pv.c		optional config_pv_ticket
  osfmk/arm64/machine_routines.c		standard
  osfmk/arm64/machine_routines_asm.s	optional nos_arm_asm
@@ -31,9 +31,9 @@ diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 
 diff --git a/osfmk/arm64/sagit_lse_asm.s b/osfmk/arm64/sagit_lse_asm.s
 new file mode 100644
---- a/osfmk/arm64/sagit_lse_asm.s
+--- /dev/null
 +++ b/osfmk/arm64/sagit_lse_asm.s
-@@ -0,0 +1,576 @@
+@@ -0,0 +1,577 @@
 +/*
 + * SAGIT LSE atomic emulation helpers.
 + *
@@ -610,7 +610,7 @@ new file mode 100644
 +GEN_ST_H sagit_stuminh,  UMIN_W,   xrh
 +GEN_ST_W sagit_stumin,   UMIN_W,   xr
 +GEN_ST_X sagit_stumin_x, UMIN_X,   xr
-
++
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
@@ -1076,7 +1076,7 @@ diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
  static void
  handle_uncategorized(arm_saved_state_t *state)
  {
-@@ -887,6 +1342,18 @@
+@@ -887,7 +1342,19 @@
  	uint32_t                   instr     = 0;
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
