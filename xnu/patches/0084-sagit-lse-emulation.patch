@@ -16,10 +16,10 @@ NOTE: fixed symbol labels to use _prefix (Mach-O convention) so that
 .globl _foo is followed by _foo: not foo:.
 diff --git a/osfmk/arm64/sagit_lse_asm.s b/osfmk/arm64/sagit_lse_asm.s
 new file mode 100644
-index 0000000..5eb1548
+index 0000000..8afbbe3
 --- /dev/null
 +++ b/osfmk/arm64/sagit_lse_asm.s
-@@ -0,0 +1,592 @@
+@@ -0,0 +1,650 @@
 +/*
 + * SAGIT LSE atomic emulation helpers.
 + *
@@ -96,6 +96,62 @@ index 0000000..5eb1548
 +.endm
 +.macro UMIN_X rd, rn, rm
 +	cmp	\rn, \rm
++	csel	\rd, \rn, \rm, ls
++.endm
++
++/*
++ * Sub-word min/max. The byte/halfword exclusive load zero-extends into the
++ * 32-bit register while the source register may still carry dirty bits above
++ * the access size, so both operands are extended to the access size before
++ * comparing. The selection itself returns the original register value; the
++ * byte/halfword store then truncates it.
++ */
++.macro SMAX_B_W rd, rn, rm
++	sxtb	w5, \rn
++	sxtb	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, ge
++.endm
++.macro SMIN_B_W rd, rn, rm
++	sxtb	w5, \rn
++	sxtb	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, le
++.endm
++.macro UMAX_B_W rd, rn, rm
++	uxtb	w5, \rn
++	uxtb	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, hs
++.endm
++.macro UMIN_B_W rd, rn, rm
++	uxtb	w5, \rn
++	uxtb	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, ls
++.endm
++.macro SMAX_H_W rd, rn, rm
++	sxth	w5, \rn
++	sxth	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, ge
++.endm
++.macro SMIN_H_W rd, rn, rm
++	sxth	w5, \rn
++	sxth	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, le
++.endm
++.macro UMAX_H_W rd, rn, rm
++	uxth	w5, \rn
++	uxth	w6, \rm
++	cmp	w5, w6
++	csel	\rd, \rn, \rm, hs
++.endm
++.macro UMIN_H_W rd, rn, rm
++	uxth	w5, \rn
++	uxth	w6, \rm
++	cmp	w5, w6
 +	csel	\rd, \rn, \rm, ls
 +.endm
 +
@@ -248,7 +304,8 @@ index 0000000..5eb1548
 +	COPYIO_RECOVER_RANGE 9f, 9f
 +1:
 +	\ld_insn	w3, [x0]
-+	cmp		w3, w1
++	and		w5, w1, #0xff
++	cmp		w3, w5
 +	b.ne		2f
 +	\st_insn	w4, w2, [x0]
 +	cbnz		w4, 1b
@@ -268,7 +325,8 @@ index 0000000..5eb1548
 +	COPYIO_RECOVER_RANGE 9f, 9f
 +1:
 +	\ld_insn	w3, [x0]
-+	cmp		w3, w1
++	and		w5, w1, #0xffff
++	cmp		w3, w5
 +	b.ne		2f
 +	\st_insn	w4, w2, [x0]
 +	cbnz		w4, 1b
@@ -547,14 +605,14 @@ index 0000000..5eb1548
 +GEN_LD_W sagit_ldumin,   UMIN_W, xr
 +GEN_LD_X sagit_ldumin_x, UMIN_X, xr
 +
-+GEN_LD_B sagit_ldsmaxb,  SMAX_W, xrb
-+GEN_LD_H sagit_ldsmaxh,  SMAX_W, xrh
-+GEN_LD_B sagit_ldsminb,  SMIN_W, xrb
-+GEN_LD_H sagit_ldsminh,  SMIN_W, xrh
-+GEN_LD_B sagit_ldumaxb,  UMAX_W, xrb
-+GEN_LD_H sagit_ldumaxh,  UMAX_W, xrh
-+GEN_LD_B sagit_lduminb,  UMIN_W, xrb
-+GEN_LD_H sagit_lduminh,  UMIN_W, xrh
++GEN_LD_B sagit_ldsmaxb,  SMAX_B_W, xrb
++GEN_LD_H sagit_ldsmaxh,  SMAX_H_W, xrh
++GEN_LD_B sagit_ldsminb,  SMIN_B_W, xrb
++GEN_LD_H sagit_ldsminh,  SMIN_H_W, xrh
++GEN_LD_B sagit_ldumaxb,  UMAX_B_W, xrb
++GEN_LD_H sagit_ldumaxh,  UMAX_H_W, xrh
++GEN_LD_B sagit_lduminb,  UMIN_B_W, xrb
++GEN_LD_H sagit_lduminh,  UMIN_H_W, xrh
 +
 +/* ================================================================== */
 +/* SWP                                                                */
@@ -595,23 +653,24 @@ index 0000000..5eb1548
 +GEN_ST_W sagit_stset,   orr,    xr
 +GEN_ST_X sagit_stset_x, orr,    xr
 +
-+GEN_ST_B sagit_stsmaxb,  SMAX_W,   xrb
-+GEN_ST_H sagit_stsmaxh,  SMAX_W,   xrh
++GEN_ST_B sagit_stsmaxb,  SMAX_B_W, xrb
++GEN_ST_H sagit_stsmaxh,  SMAX_H_W, xrh
 +GEN_ST_W sagit_stsmax,   SMAX_W,   xr
 +GEN_ST_X sagit_stsmax_x, SMAX_X,   xr
-+GEN_ST_B sagit_stsminb,  SMIN_W,   xrb
-+GEN_ST_H sagit_stsminh,  SMIN_W,   xrh
++GEN_ST_B sagit_stsminb,  SMIN_B_W, xrb
++GEN_ST_H sagit_stsminh,  SMIN_H_W, xrh
 +GEN_ST_W sagit_stsmin,   SMIN_W,   xr
 +GEN_ST_X sagit_stsmin_x, SMIN_X,   xr
-+GEN_ST_B sagit_stumaxb,  UMAX_W,   xrb
-+GEN_ST_H sagit_stumaxh,  UMAX_W,   xrh
++GEN_ST_B sagit_stumaxb,  UMAX_B_W, xrb
++GEN_ST_H sagit_stumaxh,  UMAX_H_W, xrh
 +GEN_ST_W sagit_stumax,   UMAX_W,   xr
 +GEN_ST_X sagit_stumax_x, UMAX_X,   xr
-+GEN_ST_B sagit_stuminb,  UMIN_W,   xrb
-+GEN_ST_H sagit_stuminh,  UMIN_W,   xrh
++GEN_ST_B sagit_stuminb,  UMIN_B_W, xrb
++GEN_ST_H sagit_stuminh,  UMIN_H_W, xrh
 +GEN_ST_W sagit_stumin,   UMIN_W,   xr
 +GEN_ST_X sagit_stumin_x, UMIN_X,   xr
 +
+
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 index 24f1abc..efb402f 100644
 --- a/osfmk/arm64/sleh.c
