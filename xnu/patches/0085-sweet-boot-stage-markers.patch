@@ -1,7 +1,7 @@
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -514,28 +514,36 @@
+@@ -514,28 +514,37 @@
  	mov		x21, #0
  
  #if defined(SWEET)
@@ -22,13 +22,14 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 -	b.ne	Lsweet_mark_row
 -	dsb		sy
 +/*
-+ * SWEET boot-stage marker: 48x48 square at row 1150, column 24 + stage * 64.
-+ * MOV64 + str only: no stack, no page tables, valid before and after XNU
-+ * enables its own MMU (start.s maps the splash framebuffer in both tables).
++ * SWEET boot-stage marker: one 48x48 white square per stage, stacked down the
++ * left edge at row 300 + stage * 80, column 24.  Counting the squares top to
++ * bottom gives the highest stage reached; no colour decoding needed.
++ * MOV64 + str only: no stack, no page tables.
 + */
-+.macro sweet_stage stage, color
-+	MOV64	x9, (0x9d600000 + 1150 * 4320 + (24 + \stage * 64) * 4)
-+	MOV64	x10, \color
++.macro sweet_stage stage
++	MOV64	x9, (0x9d600000 + (300 + \stage * 80) * 4320 + 24 * 4)
++	MOV64	x10, 0xffffffff
 +	mov	x11, #48
 +9:	mov	x12, #48
 +	mov	x13, x9
@@ -41,7 +42,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	b.ne	9b
 +	dsb	sy
 +.endm
-+	sweet_stage 0, 0xffff00ff	/* _start_first_cpu entered */
++	sweet_stage 0	/* _start_first_cpu entered */
  #endif
  
  	// Set low reset vector before attempting any loads
@@ -49,114 +50,114 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
  	MSR_VBAR_EL1_X0
 +#if defined(SWEET)
-+	sweet_stage 1, 0xffffff00	/* VBAR set (physical) */
++	sweet_stage 1	/* VBAR set (physical) */
 +#endif
  
  
  	// Get the kernel memory parameters from the boot args
-@@ -544,6 +552,9 @@
+@@ -544,6 +553,9 @@
  	ldr		x24, [x20, BA_MEM_SIZE]				// Get the physical memory size
  	adrp	x25, EXT(bootstrap_pagetables)@page	// Get the start of the page tables
  	ldr		x26, [x20, BA_BOOT_FLAGS]			// Get the kernel boot flags
 +#if defined(SWEET)
-+	sweet_stage 2, 0xff00ff00	/* boot_args read */
++	sweet_stage 2	/* boot_args read */
 +#endif
  
  	// Clear the registers that will be used to store the userspace thread pointer and CPU number.
  	// We may not actually be booting from ordinal CPU 0, so this register will be updated
-@@ -600,6 +611,9 @@
+@@ -600,6 +612,9 @@
  	str		x0, [x1], #(1 << TTE_SHIFT)			//   Invalidate and advance
  	subs	x2, x2, #1							//   entries--
  	b.ne	Linvalidate_bootstrap				// } while (entries != 0)
 +#if defined(SWEET)
-+	sweet_stage 3, 0xff00ffff	/* bootstrap tables cleared */
++	sweet_stage 3	/* bootstrap tables cleared */
 +#endif
  
  	/*
  	 * In order to reclaim memory on targets where TZ0 (or some other entity)
-@@ -630,6 +644,9 @@
+@@ -630,6 +645,9 @@
  	add		x0, x0, x1							// base is kernel link address + slide
  
  Lkernelcache_base_found:
 +#if defined(SWEET)
-+	sweet_stage 4, 0xff0000ff	/* mach header base found */
++	sweet_stage 4	/* mach header base found */
 +#endif
  	/*
  	 * Adjust physical and virtual base addresses to account for physical
  	 * memory preceeding xnu Mach-O header
-@@ -673,10 +690,16 @@
+@@ -673,10 +691,16 @@
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	/* create_bootstrap_mapping(vbase, pbase, num_ents, L1 table, freeptr) */
  	create_bootstrap_mapping x0,  x4,  x5, x1, x2, x6, x10, x11, x12, x13
 +#if defined(SWEET)
-+	sweet_stage 5, 0xffff8000	/* V=P map built */
++	sweet_stage 5	/* V=P map built */
 +#endif
  
  	/* Setup the KVA bootstrap mapping */
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
 +#if defined(SWEET)
-+	sweet_stage 6, 0xff8000ff	/* KVA map built */
++	sweet_stage 6	/* KVA map built */
 +#endif
  
  #if defined(SWEET)
  	/*
-@@ -697,6 +720,9 @@
+@@ -697,6 +721,9 @@
  
  	/* Ensure TTEs are visible */
  	dsb		ish
 +#if defined(SWEET)
-+	sweet_stage 7, 0xff00ff80	/* fb block mapped, TTEs visible */
++	sweet_stage 7	/* fb block mapped, TTEs visible */
 +#endif
  
  
  	b		common_start
-@@ -730,6 +756,9 @@
+@@ -730,6 +757,9 @@
  	add		x0, x0, EXT(sysreg_restore)@pageoff
  	ldr		x1, [x0, SR_RESTORE_TCR_EL1]
  	MSR_TCR_EL1_X1
 +#if defined(SWEET)
-+	sweet_stage 8, 0xffff0080	/* TCR programmed */
++	sweet_stage 8	/* TCR programmed */
 +#endif
  
  	/* Set up translation table base registers.
  	 *	TTBR0 - V=P table @ top of kernel
-@@ -747,6 +776,9 @@
+@@ -747,6 +777,9 @@
  	add		x0, x25, PGBYTES
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
 +#if defined(SWEET)
-+	sweet_stage 9, 0xff80ffff	/* TTBR0/TTBR1 set */
++	sweet_stage 9	/* TTBR0/TTBR1 set */
 +#endif
  
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
  	mov		x0, xzr
-@@ -770,6 +802,9 @@
+@@ -770,6 +803,9 @@
  	isb
  	tlbi	vmalle1
  	dsb		ish
 +#if defined(SWEET)
-+	sweet_stage 10, 0xff8080ff	/* MAIR + TLB invalidated */
++	sweet_stage 10	/* MAIR + TLB invalidated */
 +#endif
  
  
  #if defined(BCM2837)
-@@ -836,6 +871,9 @@
+@@ -836,6 +872,9 @@
  	MOV64   x0, SCTLR_EL1_DEFAULT
  	MSR_SCTLR_EL1_X0
  	isb		sy
 +#if defined(SWEET)
-+	sweet_stage 11, 0xffffffff	/* MMU + caches on */
++	sweet_stage 11	/* MMU + caches on */
 +#endif
  
  #if !VMAPPLE && !defined(SWEET)
  	MOV64   x1, SCTLR_EL1_DEFAULT
-@@ -900,6 +938,9 @@
+@@ -900,6 +939,9 @@
  #endif
  
  	// Return to arm_init()
 +#if defined(SWEET)
-+	sweet_stage 12, 0xff808080	/* about to enter arm_init */
++	sweet_stage 12	/* about to enter arm_init */
 +#endif
  	ret
  
