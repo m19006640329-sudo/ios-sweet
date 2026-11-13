@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - "xnu/patches/008*"
+      - "tests/sagit-lse/**"
       - ".github/workflows/xnu-sagit.yml"
 
 concurrency:
@@ -129,4 +130,33 @@ jobs:
         with:
           name: sagit-qemu-cortex-a53
           path: qemu-out/
+          retention-days: 14
+
+  lse-selftest:
+    # Independent bare-metal check of the 224 sagit_* LSE helpers extracted
+    # from xnu/patches/0084: semantics vs a C reference model, fault recovery
+    # through the copyio vector table, and instruction decoding of the
+    # assembler-emitted 224 LSE encodings. Runs on cortex-a53 (ARMv8.0, no LSE).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld qemu-system-arm python3
+
+      - name: Build self-test
+        run: bash tests/sagit-lse/build.sh
+
+      - name: Run on cortex-a53 (no LSE)
+        run: bash tests/sagit-lse/run.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sagit-lse-selftest
+          path: tests/sagit-lse/build/serial.txt
+          if-no-files-found: warn
           retention-days: 14
