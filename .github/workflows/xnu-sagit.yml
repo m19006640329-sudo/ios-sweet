@@ -103,17 +103,20 @@ jobs:
           python3 tools/mkpayload.py "$KERNEL" qemu.adt payload.bin
           ls -la payload.bin
 
-      - name: Boot on cortex-a53 (no LSE)
+      - name: Boot on cortex-a76 (ID_AA64MMFR0 TGran16 = 1)
+        # The SAGIT kernel maps 16K pages (__ARM_16K_PG__), so the CPU model
+        # must advertise ID_AA64MMFR0_EL1.TGran16=1.  cortex-a53 reports
+        # TGran16=0 (ARMv8.0); the first MMU-on fetch then takes a
+        # translation fault at the isb after "msr sctlr_el1".  cortex-a76 has
+        # the same ID_AA64MMFR0 as Kryo 470 (see NOTES.md).
         run: |
           KERNEL=$(ls kernel/kernel.* | head -1)
           python3 tools/qemu-sweet.py payload.bin qemu-out/ \
-            --cpu cortex-a53 \
+            --cpu cortex-a76 \
             --secs ${{ inputs.qemu_secs || '25' }} \
             --kernel "$KERNEL" \
             --fail-on-panic \
             --live-serial
-          echo "exit=$?"
-        continue-on-error: true
 
       - name: Show results
         if: always()
@@ -128,7 +131,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sagit-qemu-cortex-a53
+          name: sagit-qemu-cortex-a76
           path: qemu-out/
           retention-days: 14
 
