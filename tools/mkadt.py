@@ -28,11 +28,11 @@ SOC_BASE = 0x01000000
 
 GICD, GICD_SIZE = 0x17a00000, 0x10000
 GICR, GICR_SIZE = 0x17a60000, 0x100000
-FB, FB_SIZE = 0x9c000000, 0x1700000
+FB, FB_SIZE = 0x9d600000, 0x2400000
 SWEET_ECID = 0x5357454554000001  # 'SWEET' + 1, synthetic
-FB_W, FB_H, FB_STRIDE = 1080, 2400, 1080 * 4
-# Internal UFS host (ufshc@1d84000 "ufs_mem"); QEMU virt has none
-UFS, UFS_SIZE = 0x01d84000, 0x3000
+FB_W, FB_H, FB_STRIDE = 1080, 1920, 1080 * 4
+# Internal UFS host (ufshc@1da4000 "ufs_mem"); QEMU virt has none
+UFS, UFS_SIZE = 0x01da4000, 0x2500
 TIMEBASE = 19200000
 VTIMER_INTID = 19
 # QEMU virt (-M virt,gic-version=3 -cpu cortex-a76): GICD/GICR and the generic timer's CNTFRQ
@@ -185,8 +185,8 @@ def build(seed=None, qemu=False, highmem=False):
             ph(),
             ('device_type', cstr('display-subsystem')),
             ('compatible', cstr('sweet,display')),
-            ('canvas-width', u32(1125)),
-            ('canvas-height', u32(2436)),
+            ('canvas-width', u32(1080)),
+            ('canvas-height', u32(1920)),
         ])])
 
     fbcon = node('sweet-fbcon', [
