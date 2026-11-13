@@ -550,6 +550,7 @@ static void run_probes(void)
 			uint64_t mem;
 			lse_ret_t r;
 			uint64_t old, exp, newv;
+			uint64_t want_old;
 
 			if (op == OP_CAS) {
 				const struct cvec *cv = (sz == SZ_B) ? cvec_b :
@@ -581,7 +582,9 @@ static void run_probes(void)
 				continue;
 			}
 			if (!is_st) {
-				uint64_t want_old = old & mask_of(sz);
+				/* The trap handler writes the old value back into Rt. */
+				regs[rt] = r.old_val;
+				want_old = old & mask_of(sz);
 				if (regs[rt] != want_old) {
 					fail_(t, (int)i, "probe Rt", want_old, regs[rt]);
 					continue;
