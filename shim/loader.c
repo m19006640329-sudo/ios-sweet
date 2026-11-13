@@ -136,6 +136,13 @@ const char *loader_boot(uintptr_t dtb)
 	ba->memSizeActual = p->mem_size;
 	con_hex2("BOOTARG", "pa=", ba_pa, "top=", top);
 
+	/* xnu maps 16K pages (__ARM_16K_PG__): ID_AA64MMFR0_EL1.TGran16 must not
+	 * read 0b0001 (unsupported), or the first MMU-on fetch aborts. */
+	uint64_t mmfr0;
+	__asm__ volatile("mrs %0, id_aa64mmfr0_el1" : "=r"(mmfr0));
+	con_hex2("MMFR0", "tg16=", (uint32_t)((mmfr0 >> 20) & 0xf), "parange=", (uint32_t)(mmfr0 & 0xf));
+	con_hex2("MMFR0", "lo=", (uint32_t)mmfr0, "hi=", (uint32_t)(mmfr0 >> 32));
+
 	uintptr_t entry_pa = p->entry_va + pa_of_va_base;
 	con_hex("JUMP", entry_pa);
 	con_str("XNU", "jumping (fbcon clears screen)");

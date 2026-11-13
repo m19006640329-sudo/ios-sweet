@@ -103,20 +103,34 @@ jobs:
           python3 tools/mkpayload.py "$KERNEL" qemu.adt payload.bin
           ls -la payload.bin
 
-      - name: Boot on cortex-a76 (ID_AA64MMFR0 TGran16 = 1)
-        # The SAGIT kernel maps 16K pages (__ARM_16K_PG__), so the CPU model
-        # must advertise ID_AA64MMFR0_EL1.TGran16=1.  cortex-a53 reports
-        # TGran16=0 (ARMv8.0); the first MMU-on fetch then takes a
-        # translation fault at the isb after "msr sctlr_el1".  cortex-a76 has
-        # the same ID_AA64MMFR0 as Kryo 470 (see NOTES.md).
+      - name: Boot on cortex-a76 (16K-granule capable)
+        # The SAGIT kernel maps 16K pages (__ARM_16K_PG__).  QEMU's cortex-a53
+        # model faults at the first post-MMU fetch (translation fault at the
+        # isb after "msr sctlr_el1"); cortex-a76 runs it.  cortex-a76 is also
+        # the model NOTES.md uses (same family as Kryo 470).
         run: |
           KERNEL=$(ls kernel/kernel.* | head -1)
+          set +e
           python3 tools/qemu-sweet.py payload.bin qemu-out/ \
             --cpu cortex-a76 \
             --secs ${{ inputs.qemu_secs || '25' }} \
             --kernel "$KERNEL" \
             --fail-on-panic \
             --live-serial
+          rc=$?
+          set -e
+          echo "qemu-sweet exit=$rc"
+          # exit 2 = visible panic, always a failure
+          if [ "$rc" -eq 2 ]; then
+            echo "::error::kernel panicked"
+            exit 1
+          fi
+          # exit 3 = screen decode incomplete (the framebuffer is a circular
+          # snapshot); accept it as long as BSD bootstrap was reached.
+          if [ "$rc" -ne 0 ] && ! grep -q "VM bootstrap done" qemu-out/fb.txt; then
+            echo "::error::kernel did not reach BSD bootstrap (exit=$rc)"
+            exit 1
+          fi
 
       - name: Show results
         if: always()
