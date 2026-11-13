@@ -11,6 +11,7 @@
 #include "console.h"
 #include "fdt.h"
 #include "loader.h"
+#include "mmu.h"
 
 #define BOOT_LINE_LENGTH	608
 #define PAGE_16K		0x4000UL
@@ -144,11 +145,26 @@ const char *loader_boot(uintptr_t dtb)
 	con_hex2("MMFR0", "lo=", (uint32_t)mmfr0, "hi=", (uint32_t)(mmfr0 >> 32));
 
 	uintptr_t entry_pa = p->entry_va + pa_of_va_base;
+	con_hex2("XNUMAP", "virt=", p->virt_base, "phys=", p->phys_base);
 	con_hex("JUMP", entry_pa);
 	con_str("XNU", "jumping (fbcon clears screen)");
 
-	/* Everything was written with the MMU and caches off; drop any stale I-cache lines too. */
-	__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
+	/* Hand the kernel over in the state QEMU proves it boots in: MMU, D-cache
+	 * and I-cache off.  XNU's start.s derives its table addresses with adrp
+	 * and switches TTBR0 to a table it builds for the *runtime* addresses, so
+	 * it must run with translation off; leaving our identity map enabled makes
+	 * the first post-"bl set_mmu_ttb" fetch fault. */
+	for (uintptr_t a = p->phys_base; a < top + 0x40000; a += 64)
+		__asm__ volatile("dc civac, %0" :: "r"(a) : "memory");
+	uint64_t sctlr, sctlr_in, sctlr_out;
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+	sctlr_in = sctlr;
+	sctlr &= ~((1UL << 0) | (1UL << 2) | (1UL << 12));
+	__asm__ volatile("dsb sy; ic iallu; tlbi vmalle1; dsb sy; isb;"
+			 "msr sctlr_el1, %0; isb" :: "r"(sctlr) : "memory");
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr_out));
+	con_hex2("SCTLR", "in=", (uint32_t)sctlr_in, "out=", (uint32_t)sctlr_out);
+	con_str("XNU", "MMU off; entering");
 	((xnu_entry_t)entry_pa)(ba_pa);
 	return "xnu returned";
 }
