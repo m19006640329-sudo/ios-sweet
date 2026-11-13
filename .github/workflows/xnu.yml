@@ -17,9 +17,14 @@ on:
         default: "true"
   push:
     branches: [main]
+    # xnu-sagit.yml owns 008x (SAGIT) patches and xnu-sagit.yml itself;
+    # exclude them so every SAGIT change doesn't kick off a SWEET build.
     paths:
       - "xnu/patches/**"
       - ".github/workflows/xnu.yml"
+    paths-ignore:
+      - "xnu/patches/008*"
+      - ".github/workflows/xnu-sagit.yml"
 
 concurrency:
   group: xnu-${{ github.ref }}
