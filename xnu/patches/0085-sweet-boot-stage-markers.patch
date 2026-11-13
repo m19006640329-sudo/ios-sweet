@@ -1,7 +1,7 @@
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -464,28 +464,35 @@
+@@ -514,28 +514,35 @@
  	mov		x21, #0
  
  #if defined(SWEET)
@@ -53,7 +53,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  
  	// Get the kernel memory parameters from the boot args
-@@ -494,6 +501,9 @@
+@@ -544,6 +551,9 @@
  	ldr		x24, [x20, BA_MEM_SIZE]				// Get the physical memory size
  	adrp	x25, EXT(bootstrap_pagetables)@page	// Get the start of the page tables
  	ldr		x26, [x20, BA_BOOT_FLAGS]			// Get the kernel boot flags
@@ -63,7 +63,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  	// Clear the registers that will be used to store the userspace thread pointer and CPU number.
  	// We may not actually be booting from ordinal CPU 0, so this register will be updated
-@@ -550,6 +560,9 @@
+@@ -600,6 +610,9 @@
  	str		x0, [x1], #(1 << TTE_SHIFT)			//   Invalidate and advance
  	subs	x2, x2, #1							//   entries--
  	b.ne	Linvalidate_bootstrap				// } while (entries != 0)
@@ -73,7 +73,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  	/*
  	 * In order to reclaim memory on targets where TZ0 (or some other entity)
-@@ -580,6 +593,9 @@
+@@ -630,6 +643,9 @@
  	add		x0, x0, x1							// base is kernel link address + slide
  
  Lkernelcache_base_found:
@@ -83,7 +83,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  	/*
  	 * Adjust physical and virtual base addresses to account for physical
  	 * memory preceeding xnu Mach-O header
-@@ -623,10 +639,16 @@
+@@ -673,10 +689,16 @@
  	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	/* create_bootstrap_mapping(vbase, pbase, num_ents, L1 table, freeptr) */
  	create_bootstrap_mapping x0,  x4,  x5, x1, x2, x6, x10, x11, x12, x13
@@ -100,7 +100,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  #if defined(SWEET)
  	/*
-@@ -647,6 +669,9 @@
+@@ -697,6 +719,9 @@
  
  	/* Ensure TTEs are visible */
  	dsb		ish
@@ -110,7 +110,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  
  	b		common_start
-@@ -680,6 +705,9 @@
+@@ -730,6 +755,9 @@
  	add		x0, x0, EXT(sysreg_restore)@pageoff
  	ldr		x1, [x0, SR_RESTORE_TCR_EL1]
  	MSR_TCR_EL1_X1
@@ -120,7 +120,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  	/* Set up translation table base registers.
  	 *	TTBR0 - V=P table @ top of kernel
-@@ -697,6 +725,9 @@
+@@ -747,6 +775,9 @@
  	add		x0, x25, PGBYTES
  	and		x0, x0, #(TTBR_BADDR_MASK)
  	MSR_TTBR1_EL1_X0
@@ -130,7 +130,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  	// Set up MAIR attr0 for normal memory, attr1 for device memory
  	mov		x0, xzr
-@@ -720,6 +751,9 @@
+@@ -770,6 +801,9 @@
  	isb
  	tlbi	vmalle1
  	dsb		ish
@@ -140,7 +140,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  
  #if defined(BCM2837)
-@@ -780,6 +814,9 @@
+@@ -836,6 +870,9 @@
  	MOV64   x0, SCTLR_EL1_DEFAULT
  	MSR_SCTLR_EL1_X0
  	isb		sy
@@ -148,9 +148,9 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	sweet_stage 11, 0xffffffff	/* MMU + caches on */
 +#endif
  
- #if !VMAPPLE
+ #if !VMAPPLE && !defined(SWEET)
  	MOV64   x1, SCTLR_EL1_DEFAULT
-@@ -844,6 +881,9 @@
+@@ -900,6 +937,9 @@
  #endif
  
  	// Return to arm_init()
