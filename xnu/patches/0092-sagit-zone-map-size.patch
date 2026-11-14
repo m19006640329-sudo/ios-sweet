@@ -1,0 +1,26 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] zalloc: use embedded zone map sizes for SAGIT
+
+The build uses XNU_PLATFORM_MacOSX, so zalloc reserves the macOS zone map
+(128GB VA, 32GB max).  That works on the large-memory 16K layout, whose
+kernel map spans more than a terabyte, but the 4K non-large layout only
+provides about 48GiB between VM_MIN_KERNEL_ADDRESS and
+VM_MAX_KERNEL_ADDRESS, so kmem_range_init could not place the zones claim:
+
+  kmem_range_init: vm_map_locate_space failing for claim zones
+
+Use the embedded (iOS) 24GB/8GB numbers, which do fit alongside the
+compressor and the other claims.
+---
+ osfmk/kern/zalloc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/osfmk/kern/zalloc.c b/osfmk/kern/zalloc.c
+--- a/osfmk/kern/zalloc.c
++++ b/osfmk/kern/zalloc.c
+@@ -163,4 +163,4 @@
+-#if XNU_PLATFORM_MacOSX
++#if XNU_PLATFORM_MacOSX && !defined(ARM64_BOARD_CONFIG_SAGIT)
+ #define ZONE_MAP_MAX            (32ULL << 30)
+ #define ZONE_MAP_VA_SIZE        (128ULL << 30)
+ #else /* XNU_PLATFORM_MacOSX */
