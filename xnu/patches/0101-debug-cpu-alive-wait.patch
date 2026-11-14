@@ -1,0 +1,48 @@
+Subject: [PATCH] SAGIT: diagnose the boot CPU alive wait
+
+The phone reaches stage 46 but never prints the timeout panic.  Do not
+sleep in the alive wait: IOSleep cannot wake while interrupt delivery is
+broken.  Report which half of the startup condition is stuck and retain a
+busy-wait timeout fallback in case the timebase itself is not advancing.
+---
+ iokit/Kernel/arm/SweetCPU.cpp | 15 +++++++++++++--
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ -163,15 +163,25 @@ SweetCPU::startAll(void *arg __unused, wait_result_t result __unused)
+ 		/* processor_start() is asynchronous for secondaries in this XNU. */
+ 		nanoseconds_to_deadline(5 * NSEC_PER_SEC, &deadline);
++		unsigned int waited_ms = 0;
+ 		while (__atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE) == 0 ||
+ 		    !sweet_cpu_signal_is_enabled(i)) {
+ 			sweet_early_mark(46, "waiting for CPU alive");
+-			if (mach_absolute_time() > deadline) {
++			uint64_t now = mach_absolute_time();
++			if (waited_ms == 0 || (waited_ms % 1000) == 0) {
++				IOLog("SWEET CPU: wait cpu=%u ms=%u initialized=%u signal=%u IRQs=%u now=0x%llx deadline=0x%llx\n",
++				    i, waited_ms,
++				    __atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE),
++				    sweet_cpu_signal_is_enabled(i), ml_get_interrupts_enabled(),
++				    now, deadline);
++			}
++			if (now > deadline || waited_ms >= 5000) {
+ 				IOLog("SWEET CPU: cpu=%u mpidr=0x%x NOT alive after 5s\n",
+ 				    i, topology->cpus[i].phys_id);
+ 				panic("SWEET CPU: cpu=%u startup timeout (reset/MMU/GIC/SGI)", i);
+ 			}
+-			IOSleep(1);
++			delay(1000);
++			waited_ms++;
+ 		}
+ 		IOLog("SWEET CPU: cpu=%u mpidr=0x%x came alive; SGI1 OK\n",
+ 		    i, topology->cpus[i].phys_id);
+ 	}
+@@ -209,5 +219,5 @@ SweetCPU::initCPU(bool boot)
+ 	setCPUState(kIOCPUStateRunning);
+-	kprintf("SWEET CPU: cpu=%u entered initCPU mpidr=0x%llx EL%llu IRQs=%u\n",
++	IOLog("SWEET CPU: cpu=%u entered initCPU mpidr=0x%llx EL%llu IRQs=%u\n",
+ 	    getCPUNumber(), __builtin_arm_rsr64("MPIDR_EL1") & 0xffffULL,
+ 	    __builtin_arm_rsr64("CurrentEL") >> 2, ml_get_interrupts_enabled());
+ 	__atomic_store_n(&initialized, 1, __ATOMIC_RELEASE);
