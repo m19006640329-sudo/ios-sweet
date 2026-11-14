@@ -1,0 +1,30 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] sagit: do not require the iOS VA limit for the 4K commpage check
+
+XNU only ships 4K arm64 kernels on iOS, where MACH_VM_MAX_ADDRESS is the
+64GB limit and the nested commpage table entry lands just above it.  The
+SAGIT port builds the macOS platform with 4K pages, so the userspace VA
+limit is 0x7FFFFE000000 and this compile-time check trips.
+
+The runtime path does not depend on that constant: pmap_insert_commpage_internal()
+nests the shared tables through pmap_ttne() and panics if the slot is already
+occupied.  Keep the assertion for the iOS layout only.
+---
+ osfmk/arm/pmap/pmap.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/osfmk/arm/pmap/pmap.c b/osfmk/arm/pmap/pmap.c
+--- a/osfmk/arm/pmap/pmap.c
++++ b/osfmk/arm/pmap/pmap.c
+@@ -10983,9 +10983,11 @@
+ #elif (ARM_PGSHIFT == 12)
+ /**
+  * Ensure that 64-bit devices using 4K pages can nest the commpage completely
+  * above the maximum userspace VA.
+  */
++#if !defined(XNU_PLATFORM_MacOSX) && !defined(XNU_PLATFORM_DriverKit)
+ static_assert((_COMM_PAGE64_BASE_ADDRESS & ~ARM_TT_L1_OFFMASK) >= MACH_VM_MAX_ADDRESS);
++#endif
+ #else
+ #error Nested shared page mapping is unsupported on this config
+ #endif
