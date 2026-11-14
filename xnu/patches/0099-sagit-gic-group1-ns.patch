@@ -1,0 +1,75 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] SAGIT: route SGI/PPI interrupts as non-secure Group 1
+
+The phone now finds its redistributor but then makes no interrupt-driven
+progress.  IGROUPR0 selects Group 1, while IGRPMODR0 selects secure versus
+non-secure Group 1 when the GIC implements two security states.  Select
+non-secure Group 1 explicitly, report the resulting state, and mark the
+first timer IRQ and SGI on the early console.
+---
+diff --git a/pexpert/pexpert/arm64/SWEET.h b/pexpert/pexpert/arm64/SWEET.h
+--- a/pexpert/pexpert/arm64/SWEET.h
++++ b/pexpert/pexpert/arm64/SWEET.h
+@@ -66,5 +66,6 @@
+ #define GICR_TYPER                              0x08
+ #define GICR_WAKER                              0x14
+ #define GICR_IGROUPR0                           0x10080
++#define GICR_IGRPMODR0                          0x10D00
+ #define GICR_ISENABLER0                         0x10100
+ #define GICR_IPRIORITYR0                        0x10400
+
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -171,6 +171,7 @@ pe_init_fiq()
+ 	 * and arrives as an IRQ (see sleh_irq). GICR_IGROUPR0 reads as zero
+ 	 * from the non-secure side even after this write; delivery still works.
+ 	 */
+ 	gicr_write32(GICR_IGROUPR0, 0xFFFFFFFF);
++	gicr_write32(GICR_IGRPMODR0, 0);
+ 	for (unsigned int i = 0; i < 32; i += 4) {
+ 		gicr_write32(GICR_IPRIORITYR0 + i, 0xA0A0A0A0);
+@@ -211,6 +212,9 @@ pe_init_fiq()
+ 	}
+ 	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
++	kprintf("SWEET GIC: group=0x%x modifier=0x%x ctlr=0x%x grpen=0x%llx\n",
++	    gicr_read32(GICR_IGROUPR0), gicr_read32(GICR_IGRPMODR0),
++	    gicd_read32(GICD_CTLR), (unsigned long long)__builtin_arm_rsr64("ICC_IGRPEN1_EL1"));
+ #else
+ 	// Enable the forwarding of the vtimer interrupt
+ 	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -37,6 +37,7 @@
+ #include <arm64/proc_reg.h>
+ #include <arm64/machine_machdep.h>
+ #include <arm64/monotonic.h>
++#include <arm64/sweet_early.h>
+ #include <arm64/instructions.h>
+ 
+ #include <kern/debug.h>
+@@ -2335,11 +2336,21 @@ sleh_irq(arm_saved_state_t *state)
+ 		return; /* spurious */
+ 	}
+ 	if (intid == sweet_vtimer_intid) {
++		static boolean_t early_timer_seen = FALSE;
++		if (!early_timer_seen) {
++			early_timer_seen = TRUE;
++			sweet_early_mark(39, "first virtual timer IRQ");
++		}
+ 		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_TIMER);
+ 		cdp->cpu_decrementer = -1; /* Large */
+ 		INTERRUPT_MASKED_DEBUG_START(rtclock_intr, DBG_INTR_TYPE_TIMER);
+ 		rtclock_intr(TRUE);
+ 		INTERRUPT_MASKED_DEBUG_END();
+ 		__builtin_arm_wsr64("ICC_EOIR1_EL1", iar);
+ 	} else if (intid < 16) {
++		static boolean_t early_sgi_seen = FALSE;
++		if (!early_sgi_seen) {
++			early_sgi_seen = TRUE;
++			sweet_early_mark(40, "first SGI IRQ");
++		}
+ 		sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_IPI);
