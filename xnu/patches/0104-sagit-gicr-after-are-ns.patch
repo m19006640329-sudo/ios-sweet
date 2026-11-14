@@ -1,0 +1,53 @@
+Subject: [PATCH] SAGIT: enable GICD ARE_NS before programming the redistributor
+
+The GICR frames are not accessible from the non-secure side until
+GICD_CTLR.ARE_NS is set, but pe_init_fiq() programmed GICR first and only
+enabled the distributor afterwards.  On the phone every GICR write was
+dropped: IGROUPR0, ISENABLER0 and ISPENDR0 all read back zero, so neither
+the virtual timer PPI nor the self SGI ever reached the CPU interface and
+SweetCPU::startAll() waited for a signal that could not arrive.
+
+Program GICD_CTLR (ARE_NS | EnableGrp1NS) right after the GIC mapping,
+before touching the redistributor.
+---
+ pexpert/arm/pe_fiq.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -160,6 +160,21 @@
+ 		gicr_size = gicr_size_prop;
+ 	}
+ 
++#if defined(SWEET)
++	/*
++	 * The redistributor frames are unreachable from the non-secure side
++	 * until ARE_NS is set, so enable the distributor first.  With the
++	 * original order every GICR write below was silently dropped.
++	 */
++	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
++	gicd_ctlr |= GICD_CTLR_ARE_NS | GICD_CTLR_ENABLEGRP1A | GICD_CTLR_ENABLEGRP1;
++	gicd_write32(GICD_CTLR, gicd_ctlr);
++	while (gicd_read32(GICD_CTLR) & GICD_CTLR_RWP) {
++		;
++	}
++	__builtin_arm_isb(ISB_SY);
++#endif /* SWEET */
++
+ 	// Find the redistributor for this processor
+ 	vm_offset_t gicr_pe_base = find_gicr_pe_base();
+ 
+@@ -239,11 +254,5 @@
+ #if defined(SWEET)
+-	// ABL leaves only ARE_NS set; Linux writes ARE_NS | EnableGrp1A | EnableGrp1
+-	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
+-	gicd_ctlr |= GICD_CTLR_ARE_NS | GICD_CTLR_ENABLEGRP1A | GICD_CTLR_ENABLEGRP1;
+-	gicd_write32(GICD_CTLR, gicd_ctlr);
+-	while (gicd_read32(GICD_CTLR) & GICD_CTLR_RWP) {
+-		;
+-	}
++	// Distributor enable happened before the redistributor setup above.
+ 	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
+ #else
