@@ -1,0 +1,27 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] sagit: disable PAN
+
+PAN is an ARMv8.1 feature and Kryo 280 (A73/A53) does not implement it.
+SWEET.h enables __ARM_PAN_AVAILABLE__, and arm_init() then executes
+"msr pan, #1" unconditionally, which traps as an undefined instruction on
+this core.  Drop the define for SAGIT the same way 16K pages are dropped.
+---
+ pexpert/pexpert/arm64/SAGIT.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/pexpert/pexpert/arm64/SAGIT.h b/pexpert/pexpert/arm64/SAGIT.h
+--- a/pexpert/pexpert/arm64/SAGIT.h
++++ b/pexpert/pexpert/arm64/SAGIT.h
+@@ -25,6 +25,12 @@
+  * ID_AA64MMFR0_EL1.TGran16 is 1 on Kryo 280: 16K translation is unsupported.
+  * SWEET.h supplies shared board definitions, but SAGIT must use 4K pages.
+  */
+ #undef __ARM_16K_PG__
+ 
++/*
++ * PAN is ARMv8.1; Kryo 280 does not implement it, and arm_init() executes
++ * "msr pan, #1" as soon as __ARM_PAN_AVAILABLE__ is defined.
++ */
++#undef __ARM_PAN_AVAILABLE__
++
+ #endif /* ! _PEXPERT_ARM64_SAGIT_H */
