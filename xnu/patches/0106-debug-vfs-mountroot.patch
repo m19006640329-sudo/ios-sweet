@@ -26,7 +26,7 @@
 -		if (0 == (err = vfs_mountroot())) {
 +		err = vfs_mountroot();
 +		sweet_early_mark(49, "vfs_mountroot returned");
-+		IOLog("SWEET BSD: vfs_mountroot err=%d\n", err);
++		printf("SWEET BSD: vfs_mountroot err=%d\n", err);
 +		if (0 == err) {
  			break;
  		}
