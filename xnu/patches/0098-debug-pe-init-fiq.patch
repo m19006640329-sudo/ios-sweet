@@ -1,0 +1,82 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] DEBUG: trace GIC initialization on the early console
+
+The phone reaches stage 27 but not stage 28, isolating the stop to
+PE_init_cpu -> pe_init_fiq.  Trace GIC mapping, redistributor discovery and
+wake-up, CPU-interface setup, and the otherwise unbounded GICD RWP wait.
+---
+ pexpert/arm/pe_fiq.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -11,6 +11,7 @@
+ #include <machine/machine_routines.h>
+ #include <pexpert/device_tree.h>
+ #include <pexpert/arm64/board_config.h>
++#include <arm64/sweet_early.h>
+ 
+ 
+ #if HAS_GIC_V3
+@@ -78,6 +79,7 @@ pe_init_fiq()
+ {
+ 	int error;
+ 	DTEntry entry;
++	sweet_early_mark(30, "entered pe_init_fiq");
+ 
+ 	// gicd_base is 0x0 only before it's initialized by the boot processor.
+ 	// Avoid calling SecureDT* routines on secondary processors to avoid
+@@ -142,8 +144,10 @@ pe_init_fiq()
+ 		gicr_size = gicr_size_prop;
+ 	}
++	sweet_early_mark(31, "GICD and GICR mapped");
+ 
+ 	// Find the redistributor for this processor
+ 	vm_offset_t gicr_pe_base = find_gicr_pe_base();
++	sweet_early_mark(32, "redistributor found");
+ 
+ 	// Mark this PE to be awake
+ 	uint32_t gicr_waker = gicr_read32(GICR_WAKER);
+@@ -163,6 +167,7 @@ pe_init_fiq()
+ 			}
+ 		}
+ 	}
++	sweet_early_mark(33, "redistributor awake");
+ 
+ #if defined(SWEET)
+ 	/*
+@@ -183,6 +188,7 @@ pe_init_fiq()
+ 	// Enable PPI 27
+ 	gicr_write32(GICR_ISENABLER0, (1 << 27));
+ #endif /* SWEET */
++	sweet_early_mark(34, "redistributor configured");
+ 
+ 	// Enable system register access
+ 	uint64_t icc_sre = __builtin_arm_rsr64("ICC_SRE_EL1");
+@@ -202,6 +208,7 @@ pe_init_fiq()
+ 	uint64_t icc_ctlr = __builtin_arm_rsr64("ICC_CTLR_EL1");
+ 	icc_ctlr &= ~ICC_CTLR_EOIMODE;
+ 	__builtin_arm_wsr64("ICC_CTLR_EL1", icc_ctlr);
++	sweet_early_mark(35, "CPU interface configured");
+ 
+ #if defined(SWEET)
+ 	// ABL leaves only ARE_NS set; Linux writes ARE_NS | EnableGrp1A | EnableGrp1
+@@ -208,8 +215,10 @@ pe_init_fiq()
+ 	gicd_ctlr |= GICD_CTLR_ARE_NS | GICD_CTLR_ENABLEGRP1A | GICD_CTLR_ENABLEGRP1;
+ 	gicd_write32(GICD_CTLR, gicd_ctlr);
++	sweet_early_mark(36, "GICD groups enabled");
+ 	while (gicd_read32(GICD_CTLR) & GICD_CTLR_RWP) {
+ 		;
+ 	}
++	sweet_early_mark(37, "GICD RWP cleared");
+ 	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
+ #else
+@@ -221,5 +230,6 @@ pe_init_fiq()
+ 	__builtin_arm_isb(ISB_SY);
+ #endif /* SWEET */
++	sweet_early_mark(38, "GIC initialization done");
+ }
+ #else
+ void
