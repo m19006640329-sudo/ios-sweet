@@ -65,10 +65,17 @@ jobs:
         run: |
           set -o pipefail
           bash build.sh 2>&1 | tee build.log
-          if grep -Eq 'Hunk #[0-9]+ FAILED|patch failed|patch does not apply|Reversed \(or previously applied\)|can.t find file to patch' build.log; then
-            echo "::error::A SAGIT patch failed to apply; refusing to publish a kernel without it"
-            exit 1
-          fi
+          # dxb ships a few upstream patches that are intentionally skipped on
+          # this source drop, so only the patches we supply are required.
+          fail=0
+          for src in "$GITHUB_WORKSPACE"/xnu/patches/*.patch; do
+            base=$(basename "$src")
+            if grep -Fq "Skipping patch $PWD/patches/$base" build.log; then
+              echo "::error::SAGIT patch did not apply: $base"
+              fail=1
+            fi
+          done
+          exit $fail
 
       - name: Collect kernel
         if: always()
