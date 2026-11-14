@@ -1,0 +1,33 @@
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -95,6 +95,8 @@
+ #include <sys/mman.h>
+ #include <sys/kasl.h>
+ 
++extern void sweet_early_mark(unsigned int stage, const char *label);
++
+ #include <security/audit/audit.h>
+ 
+ #include <sys/malloc.h>
+@@ -889,14 +891,20 @@
+ 		int err;
+ 
+ 		bsd_init_kprintf("calling setconf\n");
++		sweet_early_mark(47, "setconf");
+ 		setconf();
++		sweet_early_mark(47, "setconf returned");
+ #if CONFIG_NETBOOT
+ 		netboot = (mountroot == netboot_mountroot);
+ #endif
+ 
+ 		bsd_init_kprintf("vfs_mountroot\n");
++		sweet_early_mark(48, "vfs_mountroot");
+ 		SWEET_BSD_MARK("vfs_mountroot");
+-		if (0 == (err = vfs_mountroot())) {
++		err = vfs_mountroot();
++		sweet_early_mark(49, "vfs_mountroot returned");
++		IOLog("SWEET BSD: vfs_mountroot err=%d\n", err);
++		if (0 == err) {
+ 			break;
+ 		}
+ 		rootdevice[0] = '\0';
