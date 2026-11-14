@@ -1,0 +1,114 @@
+Subject: [PATCH] SAGIT: observe GIC delivery instead of blocking on a timer
+
+The phone prints one "wait" line and then stops: delay() sleeps until a
+timer fires, and no timer IRQ is delivered, so both IOSleep() and delay()
+hang before the timeout can run.  Spin on the architected counter instead,
+and report the GIC readback that decides whether the boot CPU ever sees a
+Group 1 interrupt: distributor enable bits, redistributor enables, the CPU
+interface enables and the pending highest-priority interrupt.
+---
+ iokit/Kernel/arm/SweetCPU.cpp | 29 ++++++++++++++++++++++++-----
+ pexpert/arm/pe_fiq.c          | 15 +++++++++++++++
+ 2 files changed, 39 insertions(+), 5 deletions(-)
+
+diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ -21,7 +21,23 @@
+ extern "C" void sweet_secondary_entry(void);
+ extern "C" void sweet_early_mark(unsigned int stage, const char *label);
+ extern "C" boolean_t sweet_cpu_signal_is_enabled(unsigned int cpu);
++extern "C" void sweet_gic_sample(uint32_t out[5]);
++
++/* delay() waits for a timer wakeup and no timer fires before IPI delivery
++ * works, so it hangs instead of timing out.  Spin on the counter instead. */
++static void
++sweet_spin_us(uint32_t usec)
++{
++	uint64_t interval;
++	uint64_t end;
++
++	nanoseconds_to_absolutetime((uint64_t)usec * NSEC_PER_USEC, &interval);
++	end = mach_absolute_time() + interval;
++	while (mach_absolute_time() < end) {
++		__builtin_arm_isb(ISB_SY);
++	}
++}
+ 
+ class SweetCPU;
+ static SweetCPU *sweet_cpus[MAX_CPUS];
+ static uint32_t sweet_cpus_registered;
+@@ -146,6 +162,6 @@
+ 			panic("SWEET CPU: CPU registration timeout");
+ 		}
+-		delay(1000);
++		sweet_spin_us(1000);
+ 	}
+ 	sweet_early_mark(43, "CPUs registered");
+ 	/* The supplied ADT has cpu0 as the boot CPU and ascending A55 nodes. */
+@@ -163,22 +179,31 @@
+ 		/* processor_start() is asynchronous for secondaries in this XNU. */
++		if (i == 0) {
++			uint32_t gic[5];
++			sweet_gic_sample(gic);
++			IOLog("SWEET GIC: ctlr=0x%x grp=0x%x mod=0x%x\n", gic[0], gic[1], gic[2]);
++			IOLog("SWEET GIC: en=0x%x waker=0x%x\n", gic[3], gic[4]);
++			IOLog("SWEET GIC: sre=0x%llx g1=0x%llx\n",
++			    __builtin_arm_rsr64("ICC_SRE_EL1"), __builtin_arm_rsr64("ICC_IGRPEN1_EL1"));
++			IOLog("SWEET GIC: pmr=0x%llx daif=0x%llx\n",
++			    __builtin_arm_rsr64("ICC_PMR_EL1"), __builtin_arm_rsr64("DAIF"));
++		}
+ 		nanoseconds_to_deadline(5 * NSEC_PER_SEC, &deadline);
+ 		unsigned int waited_ms = 0;
+ 		while (__atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE) == 0 ||
+ 		    !sweet_cpu_signal_is_enabled(i)) {
+ 			sweet_early_mark(46, "waiting for CPU alive");
+ 			uint64_t now = mach_absolute_time();
+-			if (waited_ms == 0 || (waited_ms % 1000) == 0) {
+-				IOLog("SWEET CPU: wait cpu=%u ms=%u initialized=%u signal=%u IRQs=%u now=0x%llx deadline=0x%llx\n",
+-				    i, waited_ms,
+-				    __atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE),
+-				    sweet_cpu_signal_is_enabled(i), ml_get_interrupts_enabled(),
+-				    now, deadline);
+-			}
++			if (waited_ms == 0 || (waited_ms % 250) == 0) {
++				IOLog("SWEET CPU: wait t=%u init=%u sig=%u irq=%u hp=0x%llx\n",
++				    waited_ms, __atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE),
++				    sweet_cpu_signal_is_enabled(i), ml_get_interrupts_enabled(),
++				    __builtin_arm_rsr64("ICC_HPPIR1_EL1") & 0xFFFFFFULL);
++			}
+ 			if (now > deadline || waited_ms >= 5000) {
+ 				IOLog("SWEET CPU: cpu=%u mpidr=0x%x NOT alive after 5s\n",
+ 				    i, topology->cpus[i].phys_id);
+ 				panic("SWEET CPU: cpu=%u startup timeout (reset/MMU/GIC/SGI)", i);
+ 			}
+-			delay(1000);
++			sweet_spin_us(1000);
+ 			waited_ms++;
+ 		}
+ 		IOLog("SWEET CPU: cpu=%u mpidr=0x%x came alive; SGI1 OK\n",
+diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
+--- a/pexpert/arm/pe_fiq.c
++++ b/pexpert/arm/pe_fiq.c
+@@ -223,5 +223,21 @@
+ #endif /* SWEET */
+ }
++
++#if defined(SWEET)
++/* Early kprintf output does not reach the phone console, so expose the
++ * distributor and redistributor readback for IOLog-based diagnostics. */
++void
++sweet_gic_sample(uint32_t out[5])
++{
++	vm_offset_t pe = find_gicr_pe_base();
++
++	out[0] = gicd_read32(GICD_CTLR);
++	out[1] = _gic_read32(pe + GICR_IGROUPR0);
++	out[2] = _gic_read32(pe + GICR_IGRPMODR0);
++	out[3] = _gic_read32(pe + GICR_ISENABLER0);
++	out[4] = _gic_read32(pe + GICR_WAKER);
++}
++#endif /* SWEET */
+ #else
+ void
+ pe_init_fiq()
