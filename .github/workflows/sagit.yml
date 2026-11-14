@@ -103,16 +103,15 @@ jobs:
           python3 tools/mkpayload.py "$KERNEL" qemu.adt payload.bin
           ls -la payload.bin
 
-      - name: Boot on cortex-a76 (16K-granule capable)
-        # The SAGIT kernel maps 16K pages (__ARM_16K_PG__).  QEMU's cortex-a53
-        # model faults at the first post-MMU fetch (translation fault at the
-        # isb after "msr sctlr_el1"); cortex-a76 runs it.  cortex-a76 is also
-        # the model NOTES.md uses (same family as Kryo 470).
+      - name: Boot on cortex-a53 (Kryo 280 class, no 16K granule)
+        # SAGIT uses XNU's native 4K page-table layout.  Test on the same
+        # ARMv8.0 / TGran16=unsupported class as real hardware; cortex-a76
+        # masked the former 16K-granule bug because it supports 16K pages.
         run: |
           KERNEL=$(ls kernel/kernel.* | head -1)
           set +e
           python3 tools/qemu-sweet.py payload.bin qemu-out/ \
-            --cpu cortex-a76 \
+            --cpu cortex-a53 \
             --secs ${{ inputs.qemu_secs || '25' }} \
             --kernel "$KERNEL" \
             --fail-on-panic \
@@ -145,7 +144,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sagit-qemu-cortex-a76
+          name: sagit-qemu-cortex-a53
           path: qemu-out/
           retention-days: 14
 

@@ -1,0 +1,83 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] sagit: use the 4K translation granule
+
+Kryo 280 reports ID_AA64MMFR0_EL1.TGran16=1 (16K unsupported).  Keep SWEET
+on 16K pages, but build SAGIT with XNU's native 4K page-table layout and
+matching non-large-memory kernel virtual addresses.  The 4K bootstrap needs
+up to eight pages for this RAM range, and sixteen 2MB L2 blocks to cover the
+same 32MB framebuffer range as SWEET's single 16K-granule block.
+---
+ makedefs/MakeInc.def           |  8 ++++++++
+ osfmk/arm64/start.s            | 21 ++++++++++++++++++++-
+ pexpert/pexpert/arm64/SAGIT.h  |  7 +++++++
+ 3 files changed, 35 insertions(+), 1 deletion(-)
+
+diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
+index 729e6d1..a44a54e 100644
+--- a/makedefs/MakeInc.def
++++ b/makedefs/MakeInc.def
+@@ -339,6 +339,13 @@ ifneq ($(filter $(PLATFORM),MacOSX),)
+ endif
+ 
+ 
++ifeq ($(CURRENT_MACHINE_CONFIG),SAGIT)
++# Kryo 280 has no 16K granule: use XNU's 4K, non-large-memory VA layout.
++LARGE_MEMORY_DEFINE=-UARM_LARGE_MEMORY
++ARM64_PLKSEG_ADDR  =0xfffffff004004000
++ARM64_LINK_ADDR    =0xfffffff007004000
++endif
++
+ CFLAGS_ARM64	= -Darm64 -DARM64 -D__ARM64__ -DLP64 -DPAGE_SIZE_FIXED -DVM_KERNEL_LINK_ADDRESS=$(ARM64_LINK_ADDR) \
+ 			$(LARGE_MEMORY_DEFINE) -momit-leaf-frame-pointer -fno-strict-aliasing -D__API__=v4 -mkernel
+ 
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+index 777aca4..a61c3f5 100644
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -596,7 +596,11 @@ LEXT(start_first_cpu)
+ 	mov		x0, #(ARM_TTE_EMPTY)				// Load invalid entry template
+ 	mov		x1, x25								// Start at V=P pagetable root
+ 	mov		x2, #(TTE_PGENTRIES)				// Load number of entries per page
++#if defined(SAGIT)
++	lsl		x2, x2, #3							// SAGIT may use all 8 bootstrap pages
++#else
+ 	lsl		x2, x2, #2							// Shift by 2 for num entries on 4 pages
++#endif
+ 
+ Linvalidate_bootstrap:							// do {
+ 	str		x0, [x1], #(1 << TTE_SHIFT)			//   Invalidate and advance
+@@ -692,7 +695,18 @@ Lkernelcache_base_found:
+ 	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
+ 	lsr		x12, x12, #(ARM_TT_L2_SHIFT)
+ 	add		x13, x25, #(2 * PGBYTES)
++#if defined(SAGIT)
++	/* 4K granule: cover 0x9c000000..0x9dffffff with 16 2MB blocks. */
++	mov		x15, #16
++1:
++	str		x11, [x13, x12, lsl #TTE_SHIFT]
++	add		x11, x11, #0x200, lsl #12
++	add		x12, x12, #1
++	subs	x15, x15, #1
++	b.ne	1b
++#else
+ 	str		x11, [x13, x12, lsl #TTE_SHIFT]
++#endif
+ #endif
+ 
+ 	/* Ensure TTEs are visible */
+diff --git a/pexpert/pexpert/arm64/SAGIT.h b/pexpert/pexpert/arm64/SAGIT.h
+index 862bbdf..4c9dd26 100644
+--- a/pexpert/pexpert/arm64/SAGIT.h
++++ b/pexpert/pexpert/arm64/SAGIT.h
+@@ -20,5 +20,11 @@
+  * (armv8-a, no LSE/CRC32) and the LSE emulation handler.
+  */
+ #include <pexpert/arm64/SWEET.h>
+ 
++/*
++ * ID_AA64MMFR0_EL1.TGran16 is 1 on Kryo 280: 16K translation is unsupported.
++ * SWEET.h supplies shared board definitions, but SAGIT must use 4K pages.
++ */
++#undef __ARM_16K_PG__
++
+ #endif /* ! _PEXPERT_ARM64_SAGIT_H */
