@@ -1,13 +1,13 @@
 From: SAGIT Port <sagit@local>
-Subject: [PATCH] sagit: stop clang from emitting LSE atomics
+Subject: [PATCH] sagit: stop clang from emitting LSE/RCPC atomics
 
-Kryo 280 is an ARMv8.0 core without the LSE extension, but Darwin arm64
-defaults enable the lse target feature regardless of -march, so ordinary
-os_atomic operations were lowered to ldadd/stadd.  On hardware that made
-the kernel trap with an undefined instruction, e.g. at
-lck_grp_reference+0x8 (ldadd w8, w8, [x1]).
+Kryo 280 is an ARMv8.0 core without the LSE or RCPC extensions, but the
+Darwin arm64 target defaults enable both regardless of -march, so ordinary
+os_atomic operations were lowered to ldadd/stadd and acquire loads to
+ldapr.  On hardware the first of those trapped with an undefined
+instruction at lck_grp_reference+0x8 (ldadd w8, w8, [x1]).
 
-Negate the feature explicitly; -march=armv8-a+nolse is not enough because
+Negate the features explicitly; -march=armv8-a+nolse is not enough because
 the Darwin CPU default re-enables it afterwards.  SWEET (ARMv8.2) keeps
 LSE and is unaffected.
 ---
@@ -22,7 +22,7 @@ diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
  MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837
  MACHINE_FLAGS_ARM64_SWEET = -DARM64_BOARD_CONFIG_SWEET                -march=armv8.2-a+crypto
 -MACHINE_FLAGS_ARM64_SAGIT = -DARM64_BOARD_CONFIG_SAGIT -DARM64_BOARD_CONFIG_SWEET -march=armv8-a+crypto
-+MACHINE_FLAGS_ARM64_SAGIT = -DARM64_BOARD_CONFIG_SAGIT -DARM64_BOARD_CONFIG_SWEET -march=armv8-a+crypto -Xclang -target-feature -Xclang -lse
++MACHINE_FLAGS_ARM64_SAGIT = -DARM64_BOARD_CONFIG_SAGIT -DARM64_BOARD_CONFIG_SWEET -march=armv8-a+crypto -Xclang -target-feature -Xclang -lse -Xclang -target-feature -Xclang -rcpc
  
  
  #
