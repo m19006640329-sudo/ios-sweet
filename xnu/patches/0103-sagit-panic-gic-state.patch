@@ -1,0 +1,28 @@
+Subject: [PATCH] SAGIT: print GIC state from the CPU startup timeout panic
+
+The five second timeout now fires, but the IOLog diagnostics scroll off the
+console before the panic screen appears.  Put the same readback into the
+panic string so a photo of the panic screen carries the full picture.
+---
+ iokit/Kernel/arm/SweetCPU.cpp | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ -202,5 +202,13 @@
+ 			if (now > deadline || waited_ms >= 5000) {
++				uint32_t g[7];
++				sweet_gic_sample(g);
+ 				IOLog("SWEET CPU: cpu=%u mpidr=0x%x NOT alive after 5s\n",
+ 				    i, topology->cpus[i].phys_id);
+-				panic("SWEET CPU: cpu=%u startup timeout (reset/MMU/GIC/SGI)", i);
++				panic("SWEET CPU cpu=%u dead t=%u hp=0x%llx\n"
++				    "GICD ctlr=0x%x GICR grp=0x%x mod=0x%x en=0x%x pnd=0x%x waker=0x%x\n"
++				    "ICC sre=0x%llx g1=0x%llx pmr=0x%llx daif=0x%llx",
++				    i, waited_ms, __builtin_arm_rsr64("ICC_HPPIR1_EL1") & 0xFFFFFFULL,
++				    g[0], g[1], g[2], g[3], g[5], g[4],
++				    __builtin_arm_rsr64("ICC_SRE_EL1"), __builtin_arm_rsr64("ICC_IGRPEN1_EL1"),
++				    __builtin_arm_rsr64("ICC_PMR_EL1"), __builtin_arm_rsr64("DAIF"));
+ 			}
+ 			sweet_spin_us(1000);
