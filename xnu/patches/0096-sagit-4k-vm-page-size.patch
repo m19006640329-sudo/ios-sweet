@@ -1,0 +1,34 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] sagit: keep the VM page size at 4K
+
+arm_init advertises 16K VM pages on every arm64 device with more than 1GB
+of RAM.  SAGIT uses 4K hardware page tables, so that choice produces
+PAGE_RATIO=4 and makes write_pte_fast require 32-byte-aligned PTE groups
+while the rest of this port uses native 4K mappings.  Keep the VM page size
+equal to ARM_PGSHIFT on SAGIT; other boards retain the original policy.
+---
+ osfmk/arm/arm_init.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -398,6 +398,10 @@ arm_init(
+ 		/*
+ 		 * Select the advertised kernel page size.
+ 		 */
++#if defined(SAGIT)
++		/* SAGIT uses native 4K VM pages as well as 4K hardware page tables. */
++		PAGE_SHIFT_CONST = ARM_PGSHIFT;
++#else
+ 		if (args->memSize > 1ULL * 1024 * 1024 * 1024) {
+ 			/*
+ 			 * arm64 device with > 1GB of RAM:
+@@ -413,6 +417,7 @@ arm_init(
+ 			 */
+ 			PAGE_SHIFT_CONST = ARM_PGSHIFT;
+ 		}
++#endif
+ 
+ 		/* 32-bit apps always see 16KB page size */
+ 		page_shift_user32 = PAGE_MAX_SHIFT;
