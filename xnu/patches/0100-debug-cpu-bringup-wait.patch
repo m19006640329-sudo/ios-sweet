@@ -14,7 +14,7 @@ startAll() on the early console.
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
-@@ -89,7 +89,7 @@
+@@ -89,6 +89,6 @@
  sweet_early_mark(unsigned int stage, const char *label)
  {
 -	if (early_disabled || stage > 40) {
@@ -25,15 +25,11 @@ diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 --- a/iokit/Kernel/arm/SweetCPU.cpp
 +++ b/iokit/Kernel/arm/SweetCPU.cpp
-@@ -15,8 +15,9 @@
- #include <kern/clock.h>
- #include <kern/processor.h>
- #include <kern/thread.h>
- #include <mach/mach_time.h>
+@@ -19,4 +19,5 @@
  #include <pexpert/pexpert.h>
-+#include <arm64/sweet_early.h>
  
  extern "C" void sweet_secondary_entry(void);
++extern "C" void sweet_early_mark(unsigned int stage, const char *label);
  extern "C" boolean_t sweet_cpu_signal_is_enabled(unsigned int cpu);
 @@ -131,19 +132,22 @@
  	IOLog("SWEET CPU: requested=%u selected=%u (limit=%u)\n",
