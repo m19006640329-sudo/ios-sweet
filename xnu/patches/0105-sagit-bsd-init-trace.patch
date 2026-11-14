@@ -1,0 +1,104 @@
+Subject: [PATCH] SAGIT: trace bsd_init progress on the phone console
+
+Interrupt delivery is fixed and the boot now reaches
+"MAC Framework successfully initialized", but nothing else is printed.
+The remaining bsd_init() logging uses kprintf, which never reaches the
+phone console, so add printf() markers after each major step to find the
+next stall.
+---
+ bsd/kern/bsd_init.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -474,6 +474,12 @@
+  * used like any other.
+  */
+ void
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#define SWEET_BSD_MARK(label) printf("SWEET BSD: %s\n", label)
++#else
++#define SWEET_BSD_MARK(label) do { } while (0)
++#endif
++
+ bsd_init(void)
+ {
+ 	struct uthread *ut;
+@@ -568,6 +574,7 @@
+ 	 * Initialize the MAC Framework
+ 	 */
+ 	mac_policy_initbsd();
++	SWEET_BSD_MARK("mac_policy_initbsd");
+ 
+ #if defined (__i386__) || defined (__x86_64__)
+ 	/*
+@@ -670,6 +677,7 @@
+ 	    VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE,
+ 	    KMS_PERMANENT | KMS_NOFAIL,
+ 	    VM_KERN_MEMORY_BSD).kmr_submap;
++	SWEET_BSD_MARK("kmem_suballoc");
+ 
+ 	/*
+ 	 * Initialize buffers and hash links for buffers
+@@ -680,16 +688,19 @@
+ 	 */
+ 	bsd_init_kprintf("calling bsd_bufferinit\n");
+ 	bsd_bufferinit();
++	SWEET_BSD_MARK("bsd_bufferinit");
+ 
+ 	/*
+ 	 * Initialize the calendar.
+ 	 */
+ 	bsd_init_kprintf("calling IOKitInitializeTime\n");
+ 	IOKitInitializeTime();
++	SWEET_BSD_MARK("IOKitInitializeTime");
+ 
+ 	/* Initialize the file systems. */
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	vfsinit();
++	SWEET_BSD_MARK("vfsinit");
+ 
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ 	/* AMFI's MAC policy is built in on SWEET (bsd/kern/sweet_amfi.c). */
+@@ -760,6 +771,7 @@
+ #if SOCKETS
+ 	bsd_init_kprintf("calling socketinit\n");
+ 	socketinit();
++	SWEET_BSD_MARK("socketinit");
+ 	bsd_init_kprintf("calling domaininit\n");
+ 	domaininit();
+ 	iptap_init();
+@@ -796,9 +808,11 @@
+ 
+ 	bsd_init_kprintf("calling sysctl_mib_init\n");
+ 	sysctl_mib_init();
++	SWEET_BSD_MARK("sysctl_mib_init");
+ 
+ 	bsd_init_kprintf("calling bsd_autoconf\n");
+ 	bsd_autoconf();
++	SWEET_BSD_MARK("bsd_autoconf");
+ 
+ #if CONFIG_DTRACE
+ 	dtrace_postinit();
+@@ -863,10 +877,12 @@
+ 	 */
+ 	bsd_init_kprintf("calling net_init_run\n");
+ 	net_init_run();
++	SWEET_BSD_MARK("net_init_run");
+ #endif /* NETWORKING */
+ 
+ 	bsd_init_kprintf("calling inittodr\n");
+ 	inittodr(0);
++	SWEET_BSD_MARK("inittodr");
+ 
+ 	/* Mount the root file system. */
+ 	while (TRUE) {
+@@ -879,6 +895,7 @@
+ #endif
+ 
+ 		bsd_init_kprintf("vfs_mountroot\n");
++		SWEET_BSD_MARK("vfs_mountroot");
+ 		if (0 == (err = vfs_mountroot())) {
+ 			break;
+ 		}
