@@ -62,7 +62,13 @@ jobs:
         working-directory: dxb
         env:
           MAKEFLAGS: -k
-        run: bash build.sh
+        run: |
+          set -o pipefail
+          bash build.sh 2>&1 | tee build.log
+          if grep -Eq 'Hunk #[0-9]+ FAILED|patch failed|patch does not apply|Reversed \(or previously applied\)|can.t find file to patch' build.log; then
+            echo "::error::A SAGIT patch failed to apply; refusing to publish a kernel without it"
+            exit 1
+          fi
 
       - name: Collect kernel
         if: always()
