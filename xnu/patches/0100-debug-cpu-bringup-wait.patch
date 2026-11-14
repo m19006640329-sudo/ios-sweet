@@ -1,0 +1,76 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] SAGIT: make the CPU bring-up wait observable
+
+The phone stops right after "SWEET CPU: requested=1 selected=1" with no
+panic text, so either the registration wait never wakes or the timebase
+behind it is frozen.  Busy-wait on the timebase instead of IOSleep so a
+stuck wait reaches its deadline and panics visibly, and mark each step of
+startAll() on the early console.
+---
+ osfmk/arm64/sweet_early.c  | 2 +-
+ iokit/Kernel/arm/SweetCPU.cpp | 16 ++++++++++++++--
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
+--- a/osfmk/arm64/sweet_early.c
++++ b/osfmk/arm64/sweet_early.c
+@@ -89,7 +89,7 @@
+ sweet_early_mark(unsigned int stage, const char *label)
+ {
+-	if (early_disabled || stage > 40) {
++	if (early_disabled || stage > 60) {
+ 		return;
+ 	}
+ 	uint32_t color = 0xff00ff00u | ((stage & 7u) * 32u << 16);
+diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ -15,8 +15,9 @@
+ #include <kern/clock.h>
+ #include <kern/processor.h>
+ #include <kern/thread.h>
+ #include <mach/mach_time.h>
+ #include <pexpert/pexpert.h>
++#include <arm64/sweet_early.h>
+ 
+ extern "C" void sweet_secondary_entry(void);
+ extern "C" boolean_t sweet_cpu_signal_is_enabled(unsigned int cpu);
+@@ -131,19 +132,22 @@
+ 	IOLog("SWEET CPU: requested=%u selected=%u (limit=%u)\n",
+ 	    requested, topology->num_cpus, SWEET_SMP_MAX_CPUS);
+ 
++	sweet_early_mark(41, "waiting for CPU registration");
+ 	uint64_t deadline;
+ 	nanoseconds_to_deadline(10 * NSEC_PER_SEC, &deadline);
+ 	while (__atomic_load_n(&sweet_cpus_registered, __ATOMIC_ACQUIRE) != topology->num_cpus) {
++		sweet_early_mark(42, "registration loop running");
+ 		if (mach_absolute_time() > deadline) {
+ 			for (unsigned int i = 0; i < topology->num_cpus; i++) {
+ 				if (__atomic_load_n(&sweet_cpus[i], __ATOMIC_ACQUIRE) == NULL) {
+ 					IOLog("SWEET CPU: cpu=%u NOT registered (IOKit matching timeout)\n", i);
+ 				}
+ 			}
+ 			panic("SWEET CPU: CPU registration timeout");
+ 		}
+-		IOSleep(1);
++		delay(1000);
+ 	}
++	sweet_early_mark(43, "CPUs registered");
+ 	/* The supplied ADT has cpu0 as the boot CPU and ascending A55 nodes. */
+ 	if (topology->boot_cpu->cpu_id != 0 || topology->boot_cpu->phys_id != 0) {
+ 		panic("SWEET CPU: expected boot MPIDR 0 and logical CPU 0");
+@@ -151,11 +155,14 @@
+ 	for (unsigned int i = 0; i < topology->num_cpus; i++) {
+ 		SweetCPU *cpu = __atomic_load_n(&sweet_cpus[i], __ATOMIC_ACQUIRE);
++		sweet_early_mark(44, "calling processor_start");
+ 		kern_return_t kr = processor_start(cpu->machProcessor);
++		sweet_early_mark(45, "processor_start returned");
+ 		if (kr != KERN_SUCCESS) {
+ 			panic("SWEET CPU: cpu=%u processor_start failed: %d", i, kr);
+ 		}
+ 		/* processor_start() is asynchronous for secondaries in this XNU. */
+ 		nanoseconds_to_deadline(5 * NSEC_PER_SEC, &deadline);
+ 		while (__atomic_load_n(&cpu->initialized, __ATOMIC_ACQUIRE) == 0 ||
+ 		    !sweet_cpu_signal_is_enabled(i)) {
++			sweet_early_mark(46, "waiting for CPU alive");
+ 			if (mach_absolute_time() > deadline) {
