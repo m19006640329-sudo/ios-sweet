@@ -1,0 +1,42 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] DEBUG: split the boot steps after platform expert startup
+
+The phone reaches stage 24 but not stage 25.  Mark each remaining call so
+the next phone boot distinguishes CPU PIO mapping, timebase setup, kptimer,
+PE_init_cpu and FIQ/timer initialization.
+---
+ osfmk/arm/arm_init.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -608,22 +608,26 @@ arm_init(
+ 	}
+ 
+ 	ml_map_cpu_pio();
++	sweet_early_mark(25, "cpu PIO mapped");
+ 
+ #if APPLE_ARM64_ARCH_FAMILY
+ 	configure_late_apple_regs();
+ #endif
+ 
+ #endif
+ 
+ 	cpu_timebase_init(TRUE);
++	sweet_early_mark(26, "timebase initialized");
+ 
+ #if KPERF
+ 	/* kptimer_curcpu_up() must be called after cpu_timebase_init */
+ 	kptimer_curcpu_up();
+ #endif /* KPERF */
++	sweet_early_mark(27, "kptimer initialized");
+ 
+ 	PE_init_cpu();
++	sweet_early_mark(28, "PE cpu init done");
+ 	fiq_context_init(TRUE);
+-	sweet_early_mark(25, "cpu and fiq initialized");
++	sweet_early_mark(29, "FIQ and timer initialized");
+ 
+ 
+ #if HIBERNATION
