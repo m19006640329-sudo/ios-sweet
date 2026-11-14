@@ -1,0 +1,35 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] arm_vm_init: point the early console at the real splash FB
+
+The persistent alias maps PA 0x9c000000 and relocates early_fb to the block
+base, but the ABL splash framebuffer (and the sweet-fbcon ADT node) lives at
+0x9d600000.  QEMU only showed text because fbcon later mapped the real
+address; on the phone the early marks went to an unscanned range and the
+screen stayed blank.
+
+Map the same 32MB the bootstrap tables cover and relocate early_fb to
+0x9d600000, so the early console is visible on both phone and QEMU.
+---
+ osfmk/arm64/arm_vm_init.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1831,6 +1831,7 @@
+ #define SWEET_EARLY_FB_VA (LOW_GLOBAL_BASE_ADDRESS + ARM_TT_L2_SIZE)
+ #define SWEET_EARLY_FB_PA 0x9c000000ULL
+-#define SWEET_EARLY_FB_SIZE (1080ULL * 1920 * 4)
++#define SWEET_EARLY_FB_SIZE 0x2000000ULL
++#define SWEET_EARLY_FB_OFFSET 0x1600000ULL /* 0x9d600000 - 0x9c000000 */
+ 
+ static void
+ sweet_early_map_final(void)
+@@ -2186,6 +2187,6 @@
+ #if defined(SWEET)
+ 	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
+-	sweet_early_relocate(SWEET_EARLY_FB_VA);
++	sweet_early_relocate(SWEET_EARLY_FB_VA + SWEET_EARLY_FB_OFFSET);
+ #endif
+ 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
+ 
