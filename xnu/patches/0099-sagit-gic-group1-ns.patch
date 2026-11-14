@@ -1,27 +1,34 @@
 From: SAGIT Port <sagit@local>
-Subject: [PATCH] SAGIT: route SGI/PPI interrupts as non-secure Group 1
+Subject: [PATCH] SAGIT: route SGI/PPI as non-secure Group 1 and trace IRQs
 
-The phone now finds its redistributor but then makes no interrupt-driven
-progress.  IGROUPR0 selects Group 1, while IGRPMODR0 selects secure versus
-non-secure Group 1 when the GIC implements two security states.  Select
-non-secure Group 1 explicitly, report the resulting state, and mark the
-first timer IRQ and SGI on the early console.
+The phone now walks the whole GIC setup and reaches the later platform
+code, but then stops making progress with no further text.  IGROUPR0
+selects Group 1 while IGRPMODR0 selects secure versus non-secure Group 1
+when the GIC implements two security states, so select non-secure Group 1
+explicitly and report what the hardware accepted.  Mark the first virtual
+timer interrupt and the first SGI so the next phone boot shows whether the
+timer and IPI paths actually deliver.
 ---
+ pexpert/pexpert/arm64/SWEET.h | 1 +
+ pexpert/arm/pe_fiq.c          | 8 ++++++++
+ osfmk/arm64/sleh.c            | 12 ++++++++++++
+ 3 files changed, 21 insertions(+)
+
 diff --git a/pexpert/pexpert/arm64/SWEET.h b/pexpert/pexpert/arm64/SWEET.h
 --- a/pexpert/pexpert/arm64/SWEET.h
 +++ b/pexpert/pexpert/arm64/SWEET.h
-@@ -66,5 +66,6 @@
+@@ -66,6 +66,7 @@
  #define GICR_TYPER                              0x08
  #define GICR_WAKER                              0x14
  #define GICR_IGROUPR0                           0x10080
 +#define GICR_IGRPMODR0                          0x10D00
  #define GICR_ISENABLER0                         0x10100
  #define GICR_IPRIORITYR0                        0x10400
-
+ 
 diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
-@@ -171,6 +171,7 @@ pe_init_fiq()
+@@ -176,8 +176,9 @@ pe_init_fiq()
  	 * and arrives as an IRQ (see sleh_irq). GICR_IGROUPR0 reads as zero
  	 * from the non-secure side even after this write; delivery still works.
  	 */
@@ -29,8 +36,14 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 +	gicr_write32(GICR_IGRPMODR0, 0);
  	for (unsigned int i = 0; i < 32; i += 4) {
  		gicr_write32(GICR_IPRIORITYR0 + i, 0xA0A0A0A0);
-@@ -211,6 +212,9 @@ pe_init_fiq()
  	}
+ 	gicr_write32(GICR_ISENABLER0, (1U << sweet_vtimer_intid) | (1U << SWEET_IPI_SGI));
+@@ -218,11 +219,14 @@ pe_init_fiq()
+ 	sweet_early_mark(36, "GICD groups enabled");
+ 	while (gicd_read32(GICD_CTLR) & GICD_CTLR_RWP) {
+ 		;
+ 	}
+ 	sweet_early_mark(37, "GICD RWP cleared");
  	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
  	__builtin_arm_isb(ISB_SY);
 +	kprintf("SWEET GIC: group=0x%x modifier=0x%x ctlr=0x%x grpen=0x%llx\n",
@@ -39,7 +52,7 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
  #else
  	// Enable the forwarding of the vtimer interrupt
  	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
-
+ 	gicd_ctlr |= GICD_CTLR_ENABLEGRP0;
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
@@ -51,7 +64,8 @@ diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
  #include <arm64/instructions.h>
  
  #include <kern/debug.h>
-@@ -2335,11 +2336,21 @@ sleh_irq(arm_saved_state_t *state)
+@@ -2334,12 +2335,22 @@ sleh_irq(arm_saved_state_t *state)
+ 	if (intid >= 1020 && intid <= 1023) {
  		return; /* spurious */
  	}
  	if (intid == sweet_vtimer_intid) {
