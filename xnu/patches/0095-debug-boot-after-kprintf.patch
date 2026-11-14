@@ -1,0 +1,69 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] DEBUG: trace boot past kprintf startup on the early console
+
+The phone reaches SWEET EARLY 20 (kprintf startup complete) and then shows
+nothing: serial_exists disables the early console and fbcon output is not
+visible.  Keep the early console alive and mark the steps between kprintf
+startup and PE_init_cpu so the stop point is visible on the phone.
+---
+ osfmk/arm64/sweet_early.c |  2 +-
+ osfmk/arm/arm_init.c      | 11 +++++++----
+ 2 files changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
+--- a/osfmk/arm64/sweet_early.c
++++ b/osfmk/arm64/sweet_early.c
+@@ -90,6 +90,6 @@
+ void
+ sweet_early_mark(unsigned int stage, const char *label)
+ {
+-	if (early_disabled || stage > 20) {
++	if (early_disabled || stage > 40) {
+ 		return;
+ 	}
+ 
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -543,8 +543,6 @@
+ 	kprintf("kprintf initialized\n");
+ 	sweet_early_mark(20, "kprintf startup complete");
+-	if (serial_exists) {
+-		sweet_early_disable();
+-	}
++	/* Keep the early console until fbcon output is proven on the phone. */
+ 
+ 	serialmode = 0;
+ 	if (PE_parse_boot_argn("serial", &serialmode, sizeof(serialmode))) {
+@@ -585,19 +583,23 @@
+ 		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
+ 	}
+ 	PE_create_console();
++	sweet_early_mark(21, "console created");
+ 
+ 	/* setup console output */
+ 	PE_init_printf(FALSE);
++	sweet_early_mark(22, "printf initialized");
+ 
+ #if __arm64__
+ #if DEBUG
+ 	dump_kva_space();
+ #endif
+ #endif
+ 
+ 	cpu_machine_idle_init(TRUE);
++	sweet_early_mark(23, "idle init done");
+ 
+ 	PE_init_platform(TRUE, &BootCpuData);
++	sweet_early_mark(24, "platform expert started");
+ 
+ #if __arm64__
+ 	extern bool cpu_config_correct;
+@@ -620,6 +622,7 @@
+ 
+ 	PE_init_cpu();
+ 	fiq_context_init(TRUE);
++	sweet_early_mark(25, "cpu and fiq initialized");
+ 
+ 
+ #if HIBERNATION
