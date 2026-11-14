@@ -1,4 +1,4 @@
-name: xnu-sagit
+name: sagit-build
 
 on:
   workflow_dispatch:
@@ -17,10 +17,10 @@ on:
     paths:
       - "xnu/patches/**"
       - "tests/sagit-lse/**"
-      - ".github/workflows/xnu-sagit.yml"
+      - ".github/workflows/sagit.yml"
 
 concurrency:
-  group: xnu-sagit-${{ github.ref }}
+  group: sagit-build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
