@@ -91,10 +91,10 @@ diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
-@@ -223,5 +223,23 @@
- #endif /* SWEET */
+@@ -73,5 +73,23 @@
+ 	panic("%s: cannot find GICR base for core %u", __func__, ml_get_cpu_number(phys_id));
  }
-+
+ 
 +#if defined(SWEET)
 +/* Early kprintf output does not reach the phone console, so expose the
 + * distributor and redistributor readback for IOLog-based diagnostics. */
@@ -112,7 +112,7 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 +	out[6] = _gic_read32(pe + GICR_IACTIVER0);
 +}
 +#endif /* SWEET */
- #else
++
  void
  pe_init_fiq()
 diff --git a/pexpert/pexpert/arm64/SWEET.h b/pexpert/pexpert/arm64/SWEET.h
