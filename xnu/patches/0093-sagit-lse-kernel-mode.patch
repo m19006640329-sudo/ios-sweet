@@ -1,0 +1,40 @@
+From: SAGIT Port <sagit@local>
+Subject: [PATCH] sleh: emulate LSE atomics in kernel mode too
+
+libfirehose_kernel and the other prebuilt Apple libraries linked into the
+kernel (see kernel.development.sagit.linkarguments) are compiled with LSE
+enabled, so -march=armv8-a on our own translation units cannot help there.
+The kernel boot died inside __firehose_buffer_tracepoint_reserve with
+
+  Undefined kernel instruction: pc=... instr=c8b37f08   (cas x19, x8, [x24])
+
+Gate sagit_handle_lse() on the instruction encoding only instead of on
+PSR64_IS_USER64, so EL1 faults get the same LDXR/STXR emulation.
+---
+ osfmk/arm64/sleh.c | 12 ++++++++----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -1347,11 +1347,13 @@
+ #if defined(SAGIT)
+ 	/*
+ 	 * SAGIT has no LSE atomics (ARMv8.0). Emulate userspace LSE
+ 	 * instructions by trapping them here.
+ 	 */
+-	if (PSR64_IS_USER64(get_saved_state_cpsr(state))) {
+-		if (sagit_handle_lse(state, instr)) {
+-			return;
+-		}
+-	}
++	/*
++	 * Prebuilt Apple libraries (libfirehose_kernel, libcc_kext) are built
++	 * with LSE, so kernel-mode code needs the same emulation as userspace.
++	 */
++	if (sagit_handle_lse(state, instr)) {
++		return;
++	}
+ #endif
+ 
+ #if CONFIG_DTRACE
