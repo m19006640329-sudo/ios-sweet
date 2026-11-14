@@ -70,6 +70,11 @@ jobs:
           fail=0
           for src in "$GITHUB_WORKSPACE"/xnu/patches/*.patch; do
             base=$(basename "$src")
+            case "$base" in
+              0031-sweet-read-write-root.patch|0041-sweet-hfs-link-notes.patch)
+                # Target bsd/sweet_hfs, which this source drop does not carry.
+                continue ;;
+            esac
             if grep -Fq "Skipping patch $PWD/patches/$base" build.log; then
               echo "::error::SAGIT patch did not apply: $base"
               fail=1
