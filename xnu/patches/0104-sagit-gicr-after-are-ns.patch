@@ -1,6 +1,6 @@
 Subject: [PATCH] SAGIT: enable GICD ARE_NS before programming the redistributor
 
-The GICR frames are not accessible from the non-secure side until
+The redistributor frames are not accessible from the non-secure side until
 GICD_CTLR.ARE_NS is set, but pe_init_fiq() programmed GICR first and only
 enabled the distributor afterwards.  On the phone every GICR write was
 dropped: IGROUPR0, ISENABLER0 and ISPENDR0 all read back zero, so neither
@@ -10,15 +10,15 @@ SweetCPU::startAll() waited for a signal that could not arrive.
 Program GICD_CTLR (ARE_NS | EnableGrp1NS) right after the GIC mapping,
 before touching the redistributor.
 ---
- pexpert/arm/pe_fiq.c | 21 ++++++++++++++++++---
- 1 file changed, 18 insertions(+), 3 deletions(-)
+ pexpert/arm/pe_fiq.c | 15 ++++++---------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
 
 diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
-@@ -160,6 +160,21 @@
- 		gicr_size = gicr_size_prop;
+@@ -164,6 +164,21 @@
  	}
+ 	sweet_early_mark(31, "GICD and GICR mapped");
  
 +#if defined(SWEET)
 +	/*
@@ -37,17 +37,21 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 +
  	// Find the redistributor for this processor
  	vm_offset_t gicr_pe_base = find_gicr_pe_base();
+ 	sweet_early_mark(32, "redistributor found");
+@@ -230,15 +245,7 @@
+ 	sweet_early_mark(35, "CPU interface configured");
  
-@@ -239,11 +254,5 @@
  #if defined(SWEET)
 -	// ABL leaves only ARE_NS set; Linux writes ARE_NS | EnableGrp1A | EnableGrp1
 -	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
 -	gicd_ctlr |= GICD_CTLR_ARE_NS | GICD_CTLR_ENABLEGRP1A | GICD_CTLR_ENABLEGRP1;
 -	gicd_write32(GICD_CTLR, gicd_ctlr);
+-	sweet_early_mark(36, "GICD groups enabled");
 -	while (gicd_read32(GICD_CTLR) & GICD_CTLR_RWP) {
 -		;
 -	}
+-	sweet_early_mark(37, "GICD RWP cleared");
 +	// Distributor enable happened before the redistributor setup above.
  	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
  	__builtin_arm_isb(ISB_SY);
- #else
+ 	kprintf("SWEET GIC: group=0x%x modifier=0x%x ctlr=0x%x grpen=0x%llx\n",
