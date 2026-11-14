@@ -4,12 +4,13 @@ The phone prints one "wait" line and then stops: delay() sleeps until a
 timer fires, and no timer IRQ is delivered, so both IOSleep() and delay()
 hang before the timeout can run.  Spin on the architected counter instead,
 and report the GIC readback that decides whether the boot CPU ever sees a
-Group 1 interrupt: distributor enable bits, redistributor enables, the CPU
-interface enables and the pending highest-priority interrupt.
+Group 1 interrupt: distributor enables, redistributor enables, pending and
+active state, the CPU interface enables and the highest pending interrupt.
 ---
- iokit/Kernel/arm/SweetCPU.cpp | 29 ++++++++++++++++++++++++-----
- pexpert/arm/pe_fiq.c          | 15 +++++++++++++++
- 2 files changed, 39 insertions(+), 5 deletions(-)
+ iokit/Kernel/arm/SweetCPU.cpp  | 30 +++++++++++++++++++++++-----
+ pexpert/arm/pe_fiq.c           | 17 +++++++++++++++
+ pexpert/pexpert/arm64/SWEET.h  |  2 ++
+ 3 files changed, 44 insertions(+), 5 deletions(-)
 
 diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 --- a/iokit/Kernel/arm/SweetCPU.cpp
@@ -18,7 +19,7 @@ diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
  extern "C" void sweet_secondary_entry(void);
  extern "C" void sweet_early_mark(unsigned int stage, const char *label);
  extern "C" boolean_t sweet_cpu_signal_is_enabled(unsigned int cpu);
-+extern "C" void sweet_gic_sample(uint32_t out[5]);
++extern "C" void sweet_gic_sample(uint32_t out[7]);
 +
 +/* delay() waits for a timer wakeup and no timer fires before IPI delivery
 + * works, so it hangs instead of timing out.  Spin on the counter instead. */
@@ -46,14 +47,14 @@ diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
  	}
  	sweet_early_mark(43, "CPUs registered");
  	/* The supplied ADT has cpu0 as the boot CPU and ascending A55 nodes. */
-@@ -163,22 +179,31 @@
+@@ -163,23 +179,32 @@
  		/* processor_start() is asynchronous for secondaries in this XNU. */
 +		if (i == 0) {
-+			uint32_t gic[5];
++			uint32_t gic[7];
 +			sweet_gic_sample(gic);
 +			IOLog("SWEET GIC: ctlr=0x%x grp=0x%x mod=0x%x\n", gic[0], gic[1], gic[2]);
-+			IOLog("SWEET GIC: en=0x%x waker=0x%x\n", gic[3], gic[4]);
-+			IOLog("SWEET GIC: sre=0x%llx g1=0x%llx\n",
++			IOLog("SWEET GIC: en=0x%x pnd=0x%x act=0x%x\n", gic[3], gic[5], gic[6]);
++			IOLog("SWEET GIC: waker=0x%x sre=0x%llx g1=0x%llx\n", gic[4],
 +			    __builtin_arm_rsr64("ICC_SRE_EL1"), __builtin_arm_rsr64("ICC_IGRPEN1_EL1"));
 +			IOLog("SWEET GIC: pmr=0x%llx daif=0x%llx\n",
 +			    __builtin_arm_rsr64("ICC_PMR_EL1"), __builtin_arm_rsr64("DAIF"));
@@ -90,7 +91,7 @@ diff --git a/iokit/Kernel/arm/SweetCPU.cpp b/iokit/Kernel/arm/SweetCPU.cpp
 diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
-@@ -223,5 +223,21 @@
+@@ -223,5 +223,23 @@
  #endif /* SWEET */
  }
 +
@@ -98,7 +99,7 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 +/* Early kprintf output does not reach the phone console, so expose the
 + * distributor and redistributor readback for IOLog-based diagnostics. */
 +void
-+sweet_gic_sample(uint32_t out[5])
++sweet_gic_sample(uint32_t out[7])
 +{
 +	vm_offset_t pe = find_gicr_pe_base();
 +
@@ -107,8 +108,18 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 +	out[2] = _gic_read32(pe + GICR_IGRPMODR0);
 +	out[3] = _gic_read32(pe + GICR_ISENABLER0);
 +	out[4] = _gic_read32(pe + GICR_WAKER);
++	out[5] = _gic_read32(pe + GICR_ISPENDR0);
++	out[6] = _gic_read32(pe + GICR_IACTIVER0);
 +}
 +#endif /* SWEET */
  #else
  void
  pe_init_fiq()
+diff --git a/pexpert/pexpert/arm64/SWEET.h b/pexpert/pexpert/arm64/SWEET.h
+--- a/pexpert/pexpert/arm64/SWEET.h
++++ b/pexpert/pexpert/arm64/SWEET.h
+@@ -69,2 +69,4 @@
+ #define GICR_ISENABLER0                         0x10100
++#define GICR_ISPENDR0                           0x10200
++#define GICR_IACTIVER0                          0x10300
+ #define GICR_IPRIORITYR0                        0x10400
