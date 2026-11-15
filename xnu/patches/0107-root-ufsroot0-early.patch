@@ -1,0 +1,72 @@
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -68,6 +68,10 @@
+ extern int IODTGetDefault(const char *key, void *infoAddr, unsigned int infoSize);
+ extern boolean_t cpuid_vmm_present(void);
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++extern "C" void sweet_early_mark(unsigned int stage, const char *label);
++#endif
++
+ #define ROUNDUP(a, b) (((a) + ((b) - 1)) & (~((b) - 1)))
+ 
+ #define IOPOLLED_COREFILE       (CONFIG_KDP_INTERACTIVE_DEBUGGING)
+@@ -678,6 +682,33 @@
+ 
+ 	int xchar, dchar;
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	/*
++	 * SWEET: the internal UFS is the only root candidate here, so it must be
++	 * resolved before waitForMatchingService() below. That wait parks the
++	 * thread on a timed block; timer-driven wakeups are not delivered yet on
++	 * this platform, so it would never return.
++	 */
++	{
++		char rd[32];
++		if (PE_parse_boot_argn("rd", rd, sizeof(rd)) && strcmp(rd, "ufsroot0") == 0) {
++			extern int sweet_ufs_rootdev(dev_t *dev);
++			int ufs_error;
++
++			sweet_early_mark(50, "ufsroot0 probe");
++			ufs_error = sweet_ufs_rootdev(root);
++			sweet_early_mark(51, "ufsroot0 probe done");
++			if (ufs_error) {
++				panic("IOFindBSDRoot: SWEET UFS root %s unavailable: %d", rd, ufs_error);
++			}
++			strlcpy(rootName, rd, rootNameSize);
++			IOLog("BSD root: %s, major %d, minor %d\n", rootName, major(*root), minor(*root));
++			*oflags = 0;
++			return kIOReturnSuccess;
++		}
++	}
++#endif
++
+ 	// stall here for anyone matching on the IOBSD resource to finish (filesystems)
+ 	matching = IOService::serviceMatching(gIOResourcesKey);
+ 	assert(matching);
+@@ -765,24 +796,6 @@
+ 			regEntry->release();                                                            /* Toss the entry */
+ 		}
+ 	}
+-
+-#if defined(ARM64_BOARD_CONFIG_SWEET)
+-//
+-//	SWEET: root on a GPT partition of the internal UFS (bsd/dev/sweet_ufs.c)
+-//
+-	if (strcmp(rdBootVar, "ufsroot0") == 0) {
+-		extern int sweet_ufs_rootdev(dev_t *dev);
+-		OSSafeReleaseNULL(matching);
+-		int ufs_error = sweet_ufs_rootdev(root);
+-		if (ufs_error) {
+-			panic("IOFindBSDRoot: SWEET UFS root %s unavailable: %d", rdBootVar, ufs_error);
+-		}
+-		strlcpy(rootName, rdBootVar, rootNameSize);
+-		IOLog("BSD root: %s, major %d, minor %d\n", rootName, major(*root), minor(*root));
+-		*oflags = 0;
+-		goto iofrootx;
+-	}
+-#endif
+ 
+ //
+ //	Now check if we are trying to root on a memory device
